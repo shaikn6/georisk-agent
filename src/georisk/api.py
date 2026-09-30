@@ -202,6 +202,11 @@ async def observe(request: Request, call_next):
     try:
         resp = await call_next(request)
         status = resp.status_code
+    except Exception as exc:
+        # Type and message only (tracebacks can carry request data); the client still gets a generic 500.
+        log.error(json.dumps({"event": "unhandled_exception", "request_id": rid, "type": type(exc).__name__,
+                              "message": str(exc)[:300]}))
+        raise
     finally:
         dur = time.perf_counter() - t0
         route = _route_of(request)
