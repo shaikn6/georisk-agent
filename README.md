@@ -91,22 +91,25 @@ Each label is joined to Sentinel-2 imagery + Copernicus DEM features for the sam
 Everything below is **leave-region-out**: the model is trained on every region except one and scored on
 the held-out region, so it is judged on places it has never seen. AUC 0.5 = coin flip.
 
-**Flood** (401 points, 204 in an SFHA, 16 US regions incl. six Ohio cities)
+**Flood** (876 points, 448 in an SFHA, 16 US regions incl. six Ohio cities)
 
 | Model | AUC | 95% CI | Brier (baseline 0.250) |
 |---|---|---|---|
-| Original hand-tuned heuristic | 0.584 | 0.53–0.64 | n/a |
-| Logistic regression | 0.845 | 0.81–0.88 | 0.163 |
-| Bagged random forest (numpy) | 0.832 | 0.79–0.87 | 0.181 |
-| k-nearest neighbours | 0.786 | 0.74–0.83 | 0.191 |
-| Average of logistic + forest + kNN | 0.841 | 0.80–0.88 | 0.168 |
-| Random forest (scikit-learn-trained, exported to numpy) | 0.856 | 0.82–0.89 | 0.184 |
-| Blend: logistic + scikit-learn forest **(served)** | 0.863 | 0.83–0.90 | 0.165 |
+| Original hand-tuned heuristic | 0.607 | 0.57–0.64 | n/a |
+| Logistic regression | 0.829 | 0.80–0.86 | 0.169 |
+| Bagged random forest (numpy) | 0.806 | 0.78–0.83 | 0.189 |
+| k-nearest neighbours | 0.786 | 0.75–0.82 | 0.195 |
+| Average of logistic + forest + kNN | 0.828 | 0.80–0.85 | 0.173 |
+| Random forest (scikit-learn-trained, exported to numpy) | 0.829 | 0.80–0.85 | 0.190 |
+| Blend: logistic + scikit-learn forest **(served)** | 0.844 | 0.81–0.87 | 0.172 |
 
-**Ohio case study** (Columbus, Cincinnati, Cleveland, Dayton, Toledo, Akron; 140 points). Trained on
-*non-Ohio* regions only, tested in Ohio: blend model AUC **0.871**
-(0.80–0.93); logistic 0.857, forest 0.792, kNN 0.780.
-The original heuristic scored **0.483** there (no better than chance).
+**Ohio case study** (Columbus, Cincinnati, Cleveland, Dayton, Toledo, Akron; 292 points). Trained on
+*non-Ohio* regions only, tested in Ohio: blend model AUC **0.821**
+(0.77–0.87); logistic 0.803, forest 0.727, kNN 0.732.
+The original heuristic scored **0.519** there (no better than chance).
+Growing the flood set from 401 to 876 points lowered every number a little (the served blend went from
+0.863 to 0.844, Ohio from 0.857 to 0.821): the smaller sample was optimistic, so treat these as the
+reliable figures.
 
 **Wildfire** (98 points, 50 inside a perimeter; western US only)
 
@@ -128,7 +131,7 @@ How to read this honestly:
   set was fixed in advance with no per-model hyper-parameter search, but with a few hundred samples the top
   candidates' intervals overlap, so the choice is not a proven win over the runner-up. A wider
   scikit-learn benchmark (`python -m georisk.validation.benchmark`: gradient boosting, extra trees, SVM)
-  showed the same picture: gains of about 0.02 AUC over the logistic baseline, inside the noise.
+  showed the same picture on the 876-point flood set: every model lands between 0.81 and 0.84 AUC, inside each other's confidence intervals.
 - Serving needs **numpy only**: scikit-learn (the `research` extra) trains the forest, which is exported to
   plain JSON trees. PyTorch was deliberately not used: with ~10^2-10^3 tabular rows a neural net does not
   beat tree ensembles, and it would break the serverless size limit.
