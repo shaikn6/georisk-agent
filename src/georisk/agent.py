@@ -7,6 +7,7 @@ import os
 from dataclasses import asdict, dataclass, field
 
 from .aoi import bbox_from_point
+from .calibration import calibrated_probabilities
 from .confidence import Confidence, assess_confidence
 from .hazards import HazardContext, HazardOutcome, default_hazards, run_hazards
 from .providers import ProviderChain, build_default_chain
@@ -46,6 +47,7 @@ class Assessment:
     narrative: str
     narrative_source: str
     warnings: list[str] = field(default_factory=list)
+    calibrated: dict = field(default_factory=dict)
 
     @property
     def scores(self) -> list[RiskScore]:
@@ -109,6 +111,7 @@ def assess(
     archetype: str | None = None,
     terrain: TerrainFeatures | None = None,
     with_terrain: bool = True,
+    composite: int = 1,
     days: int | None = None,
     use_llm: bool = True,
 ) -> Assessment:
@@ -120,7 +123,8 @@ def assess(
     if scene is None and archetype:
         scene = make_scene(archetype)
     if scene is None:
-        result = (chain or default_chain()).load(bbox, days=days)
+        c = chain or default_chain()
+        result = c.load_composite(bbox, n=composite, days=days) if composite > 1 else c.load(bbox, days=days)
         scene, trail, degraded_path = result.scene, result.trail, result.degraded
         if degraded_path:
             warnings.append("imagery obtained via fallback path; see provenance")
@@ -146,7 +150,9 @@ def assess(
         lat=lat, lon=lon, radius_m=radius_m, bbox=bbox.as_list(), area_km2=round(bbox.area_km2(), 3),
         source=scene.source, acquired=scene.acquired, cloud_cover=scene.cloud_cover, features=f,
         terrain=terrain, hazards=outcomes, overall=overall, overall_level=lvl, confidence=conf,
-        provenance={"imagery_trail": trail, "terrain": terrain is not None, "synthetic": not is_real},
+        provenance={"imagery_trail": trail, "terrain": terrain is not None, "synthetic": not is_real,
+                    "n_scenes": scene.meta.get("n_scenes", 1)},
         narrative=text or template_narrative(scores, f, scene.source),
         narrative_source="llm" if text else "template", warnings=warnings,
+        calibrated=calibrated_probabilities(f, terrain, lat=lat, lon=lon) if is_real else {},
     )

@@ -79,6 +79,56 @@ fails, a deterministic template is used, so the service never depends on an LLM.
 
 800 m half-side AOI, 128x128 imagery grid, ~2 s per assessment (band reads run concurrently).
 
+## Validation against real public data
+
+Labels are public ground truth, not synthetic: **FEMA National Flood Hazard Layer** (Special Flood Hazard
+Area) for flood and **USGS/NIFC WFIGS** historical fire perimeters (>=100 acres, 2005-2018) for wildfire.
+Each label is joined to Sentinel-2 imagery + Copernicus DEM features for the same point
+(`python -m georisk.validation.run`, then `python -m georisk.validation.calibrate`).
+
+Everything below is **leave-region-out**: the model is trained on every region except one and scored on
+the held-out region, so it is judged on places it has never seen. AUC 0.5 = coin flip.
+
+**Flood** (401 points, 204 in an SFHA, 16 US regions incl. six Ohio cities)
+
+| Model | AUC | 95% CI | Brier (baseline 0.250) |
+|---|---|---|---|
+| Original hand-tuned heuristic | 0.584 | 0.53–0.64 | n/a |
+| Logistic regression (served) | 0.845 | 0.81–0.88 | 0.163 |
+| Bagged random forest | 0.832 | 0.79–0.87 | 0.181 |
+| k-nearest neighbours | 0.786 | 0.74–0.83 | 0.191 |
+| Average of all three | 0.841 | 0.80–0.88 | 0.168 |
+
+**Ohio case study** (Columbus, Cincinnati, Cleveland, Dayton, Toledo, Akron; 140 points). Trained on
+*non-Ohio* regions only, tested in Ohio: logistic AUC **0.857**
+(0.78–0.92), ensemble 0.845, forest 0.792,
+kNN 0.780; the original heuristic scored **0.483** (no better than chance).
+
+**Wildfire** (98 points, 50 inside a perimeter; western US only)
+
+| Model | AUC | 95% CI | Brier (baseline 0.250) |
+|---|---|---|---|
+| Original hand-tuned heuristic | 0.558 | 0.45–0.68 | n/a |
+| Logistic regression | 0.739 | 0.62–0.84 | 0.203 |
+| Bagged random forest | 0.770 | 0.67–0.86 | 0.200 |
+| k-nearest neighbours (served) | 0.799 | 0.70–0.88 | 0.183 |
+| Average of all three | 0.778 | 0.67–0.86 | 0.187 |
+
+How to read this honestly:
+- The original heuristic scores were **statistically indistinguishable from chance** against ground truth.
+  That is why the service now also returns a *calibrated probability* from a fitted model.
+- The served model for each task is whichever candidate has the best leave-region-out AUC. With a few
+  hundred samples the candidates are close (their intervals overlap), so the choice is not a proven win
+  over the runner-up. The candidate set was fixed in advance; there is no per-model hyper-parameter search.
+- A model ships only if leave-region-out AUC >= 0.6, its CI lower bound > 0.5 and Brier beats the base rate.
+- **Skill is modest, not deployment-grade for insurance or lending decisions.** Weak regions: flood in
+  New Orleans (AUC 0.54, pumped/leveed terrain), Miami (0.62); fire in the
+  Pacific Northwest and Arizona (0.59-0.64).
+- Labels have known noise: FEMA maps lag the ground, fire perimeters are coarse, and the fire label
+  asks "has burned before", which is a proxy for exposure, not a forecast.
+- Fire probabilities are **withheld outside the western US** (the model's training domain) instead of
+  extrapolating; flood is served across the sampled US range.
+
 ## What is implemented
 
 - Geodesic AOI construction; validated inputs.
@@ -93,12 +143,16 @@ fails, a deterministic template is used, so the service never depends on an LLM.
 - **Confidence score** with explicit reasons (cloud, staleness, missing terrain, fallback used).
 - FastAPI: `/assess`, `/assess/batch` (per-item isolation, bounded), `/health`, `/health/deep`.
 - Dockerfile with a liveness healthcheck; configuration via environment variables.
-- 56 offline tests (including fault injection for every row in the table above) + live smoke tests.
+- **Calibrated probabilities** (`calibrated` field) from numpy-only models (logistic, bagged forest, kNN) fitted on FEMA/WFIGS labels; withheld outside their training domain.
+- **Median compositing** (`composite=N`) of the N clearest scenes, with failover and single-scene degradation.
+- **Hardened API**: optional `X-API-Key` (`GEORISK_API_KEY`), bounded in-flight work (`GEORISK_MAX_INFLIGHT`, 429 when saturated), strict input validation without echoing raw input, no internal error text in responses, LLM narrative off unless `GEORISK_ALLOW_LLM=1`, CSP on the demo page.
+- **Live demo** at `/` (click-to-assess map).
+- 89 offline tests (fault injection, API security, calibration, ensemble round-trips) + live smoke tests.
 
 ## Known limitations (read before trusting a score)
 
-- **Scores are uncalibrated screening heuristics**, not probabilities or loss estimates. Thresholds
-  are hand-set and have not been fitted against labelled hazard data.
+- The 0-100 **scores are still hand-set screening heuristics** (validated as near-chance, see above).
+  Use the `calibrated` probability where present, and treat it as modest-skill screening, not a loss estimate.
 - Wildfire is inferred from vegetation amount, vegetation dryness (NBR) and slope. It ignores climate,
   fuel type, wind and fuel moisture ground truth. Treat it as a *fuel-condition* signal, not fire
   probability.
@@ -112,11 +166,10 @@ fails, a deterministic template is used, so the service never depends on an LLM.
 
 ## Roadmap (not implemented)
 
-- Time-series compositing to remove seasonality.
 - Hydrology-aware terrain features (HAND, flow accumulation) for flood context.
 - Swap the index heuristics for a learned head on a geospatial foundation-model backbone
   (e.g. Prithvi or Clay via TorchGeo), evaluated against labelled hazard footprints.
-- Calibration against public hazard layers (FEMA NFHL, MTBS burn perimeters).
+- Larger label sets (more regions, MTBS burn severity), a spatial-block CV with more Ohio-specific hydrology, and probability recalibration (isotonic) once n > 1000.
 
 ## Project layout
 

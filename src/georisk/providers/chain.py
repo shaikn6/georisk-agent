@@ -59,6 +59,51 @@ class ProviderChain:
                 out[p.name] = {"reachable": False, "circuit": self.breakers[p.name].state, "error": str(exc)}
         return out
 
+    def load_composite(
+        self, bbox: BBox, *, n: int = 3, days: int | None = None, max_cloud: float | None = None, grid: int = 128
+    ) -> ChainResult:
+        """Median composite of up to ``n`` clear scenes, with the same failover as ``load``.
+
+        A source that cannot supply a series (or supplies fewer scenes than asked) degrades to
+        whatever it can provide, down to a single scene, so compositing never reduces availability.
+        """
+        from ..composite import median_composite
+
+        if n <= 1:
+            return self.load(bbox, days=days, max_cloud=max_cloud, grid=grid)
+        days = days or self.settings.lookback_days
+        max_cloud = max_cloud if max_cloud is not None else self.settings.max_cloud
+        key = self.cache.key(bbox, days, max_cloud, grid) + f"-c{n}" if self.cache else None
+        trail: list[dict] = []
+        if self.cache and key:
+            hit = self.cache.get(key)
+            if hit:
+                return ChainResult(hit, [{"source": "cache", "outcome": "ok"}])
+        for p in self.providers:
+            series = getattr(p, "load_series", None)
+            if series is None:
+                continue
+            try:
+                scenes = self.breakers[p.name].call(
+                    lambda p=p, series=series: retry(
+                        lambda: series(bbox, days=days, max_cloud=max_cloud, grid=grid, n=n),
+                        attempts=self.settings.retry_attempts, never_retry=(NoSceneFound,),
+                        **({"sleep": self._sleep} if self._sleep else {}),
+                    )
+                )
+                comp = median_composite(scenes)
+                trail.append({"source": p.name, "outcome": "ok", "scenes": len(scenes)})
+                if self.cache and key:
+                    self.cache.put(key, comp)
+                return ChainResult(comp, trail)
+            except CircuitOpen:
+                trail.append({"source": p.name, "outcome": "circuit-open"})
+            except Exception as exc:  # noqa: BLE001
+                trail.append({"source": p.name, "outcome": f"error: {exc}"})
+        # No source could build a series: fall back to the ordinary single-scene path.
+        single = self.load(bbox, days=days, max_cloud=max_cloud, grid=grid)
+        return ChainResult(single.scene, trail + single.trail)
+
     def load(self, bbox: BBox, *, days: int | None = None, max_cloud: float | None = None, grid: int = 128) -> ChainResult:
         days = days or self.settings.lookback_days
         max_cloud = max_cloud if max_cloud is not None else self.settings.max_cloud

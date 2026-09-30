@@ -1,0 +1,224 @@
+[
+  {
+    "task": "flood",
+    "n": 401,
+    "positives": 204,
+    "meaning": "P(site lies in a FEMA Special Flood Hazard Area)",
+    "heuristic": {
+      "auc": 0.584,
+      "auc_ci95": [
+        0.53,
+        0.636
+      ]
+    },
+    "model_random_kfold": {
+      "auc": 0.864,
+      "auc_ci95": [
+        0.828,
+        0.897
+      ],
+      "brier": 0.1547,
+      "brier_baseline": 0.2499
+    },
+    "leave_region_out_by_model": {
+      "logistic": {
+        "auc": 0.845,
+        "auc_ci95": [
+          0.808,
+          0.88
+        ],
+        "brier": 0.1629,
+        "brier_baseline": 0.2499
+      },
+      "forest": {
+        "auc": 0.832,
+        "auc_ci95": [
+          0.793,
+          0.87
+        ],
+        "brier": 0.1807,
+        "brier_baseline": 0.2499
+      },
+      "knn": {
+        "auc": 0.786,
+        "auc_ci95": [
+          0.74,
+          0.83
+        ],
+        "brier": 0.191,
+        "brier_baseline": 0.2499
+      },
+      "ensemble": {
+        "auc": 0.841,
+        "auc_ci95": [
+          0.803,
+          0.88
+        ],
+        "brier": 0.1676,
+        "brier_baseline": 0.2499
+      }
+    },
+    "model_leave_region_out": {
+      "auc": 0.845,
+      "auc_ci95": [
+        0.808,
+        0.88
+      ],
+      "brier": 0.1629,
+      "brier_baseline": 0.2499,
+      "per_region_auc": {
+        "akron": 0.9,
+        "cedar_rapids": 0.82,
+        "charleston": 0.94,
+        "cincinnati": 0.95,
+        "cleveland": 0.97,
+        "columbus": 0.95,
+        "dallas": 0.87,
+        "dayton": 0.94,
+        "houston": 0.88,
+        "miami": 0.62,
+        "nashville": 0.92,
+        "new_orleans": 0.54,
+        "pittsburgh": 1.0,
+        "sacramento": 0.78,
+        "st_louis": 0.73,
+        "toledo": 0.7
+      }
+    },
+    "served_model": "logistic",
+    "ohio_holdout": {
+      "n_ohio": 140,
+      "trained_on": "all non-Ohio regions",
+      "by_model": {
+        "logistic": {
+          "auc": 0.857,
+          "auc_ci95": [
+            0.78,
+            0.919
+          ],
+          "brier": 0.1669,
+          "brier_baseline": 0.257
+        },
+        "forest": {
+          "auc": 0.792,
+          "auc_ci95": [
+            0.711,
+            0.859
+          ],
+          "brier": 0.1907,
+          "brier_baseline": 0.257
+        },
+        "knn": {
+          "auc": 0.78,
+          "auc_ci95": [
+            0.69,
+            0.86
+          ],
+          "brier": 0.1956,
+          "brier_baseline": 0.257
+        },
+        "ensemble": {
+          "auc": 0.845,
+          "auc_ci95": [
+            0.768,
+            0.912
+          ],
+          "brier": 0.1746,
+          "brier_baseline": 0.257
+        }
+      },
+      "heuristic_auc": 0.483
+    },
+    "gate_applied_to": "model_leave_region_out (served model)",
+    "gate": {
+      "min_auc": 0.6,
+      "min_ci_low": 0.5
+    },
+    "shipped": true
+  },
+  {
+    "task": "fire",
+    "n": 98,
+    "positives": 50,
+    "meaning": "P(site lies inside a >=100-acre fire perimeter from 2005-2018)",
+    "heuristic": {
+      "auc": 0.558,
+      "auc_ci95": [
+        0.454,
+        0.675
+      ]
+    },
+    "model_random_kfold": {
+      "auc": 0.781,
+      "auc_ci95": [
+        0.68,
+        0.866
+      ],
+      "brier": 0.1876,
+      "brier_baseline": 0.2499
+    },
+    "leave_region_out_by_model": {
+      "logistic": {
+        "auc": 0.739,
+        "auc_ci95": [
+          0.625,
+          0.836
+        ],
+        "brier": 0.2035,
+        "brier_baseline": 0.2499
+      },
+      "forest": {
+        "auc": 0.77,
+        "auc_ci95": [
+          0.665,
+          0.861
+        ],
+        "brier": 0.2,
+        "brier_baseline": 0.2499
+      },
+      "knn": {
+        "auc": 0.799,
+        "auc_ci95": [
+          0.697,
+          0.881
+        ],
+        "brier": 0.1833,
+        "brier_baseline": 0.2499
+      },
+      "ensemble": {
+        "auc": 0.778,
+        "auc_ci95": [
+          0.671,
+          0.865
+        ],
+        "brier": 0.1871,
+        "brier_baseline": 0.2499
+      }
+    },
+    "model_leave_region_out": {
+      "auc": 0.799,
+      "auc_ci95": [
+        0.697,
+        0.881
+      ],
+      "brier": 0.1833,
+      "brier_baseline": 0.2499,
+      "per_region_auc": {
+        "az_central": 0.62,
+        "nm_north": 0.96,
+        "norcal_sierra": 0.64,
+        "or_cascades": 0.6,
+        "socal": 0.98,
+        "wa_east_cascades": 0.59
+      }
+    },
+    "served_model": "knn",
+    "ohio_holdout": null,
+    "gate_applied_to": "model_leave_region_out (served model)",
+    "gate": {
+      "min_auc": 0.6,
+      "min_ci_low": 0.5
+    },
+    "shipped": true
+  }
+]

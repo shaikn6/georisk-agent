@@ -60,3 +60,16 @@ def build_scene(item, assets: dict[str, str], scl_asset: str, bbox: BBox, grid: 
         cloud_cover=float(item.properties.get("eo:cloud_cover", float("nan"))),
         meta={"platform": item.properties.get("platform"), "grid": grid, "provider": source},
     )
+
+
+def build_scenes(items, assets: dict[str, str], scl_asset: str, bbox: BBox, grid: int, source: str) -> list[Scene]:
+    """Build a scene per item; one unreadable item is skipped, not fatal, as long as one succeeds."""
+    out, errors = [], []
+    for it in items:
+        try:
+            out.append(build_scene(it, assets, scl_asset, bbox, grid, source))
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{it.id}: {exc}")
+    if not out:
+        raise RuntimeError("; ".join(errors) or "no items")
+    return out
