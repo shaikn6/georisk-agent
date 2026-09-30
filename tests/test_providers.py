@@ -120,3 +120,50 @@ def test_cache_roundtrip_preserves_bands(tmp_path):
 def test_empty_provider_list_rejected():
     with pytest.raises(ValueError):
         ProviderChain([])
+
+
+def test_composite_median_rejects_outliers_and_unions_validity():
+    import numpy as np
+
+    from georisk.composite import median_composite
+    from georisk.scene import Scene
+
+    base = make_scene("healthy_forest")
+    a = Scene(base.bands, base.valid.copy(), "x:a", "2026-09-01T00:00:00+00:00", 5.0)
+    b = Scene(base.bands, base.valid.copy(), "x:b", "2026-09-10T00:00:00+00:00", 3.0)
+    cloudy = {k: np.clip(v + 0.5, 0, 1) for k, v in base.bands.items()}  # a haze/cloud outlier
+    c = Scene(cloudy, base.valid.copy(), "x:c", "2026-09-20T00:00:00+00:00", 8.0)
+    a.valid[:8, :8] = False  # a cannot see this corner...
+    comp = median_composite([a, b, c])
+    assert np.allclose(comp.bands["nir"][20:, 20:], base.bands["nir"][20:, 20:], atol=1e-9)  # outlier voted out
+    assert comp.valid[:8, :8].all()  # ...but b and c can, so the composite can
+    assert comp.meta["n_scenes"] == 3 and comp.acquired.startswith("2026-09-20")
+
+
+def test_composite_of_one_and_error_cases():
+    import pytest
+
+    from georisk.composite import median_composite
+
+    assert median_composite([make_scene("floodplain")]).meta["n_scenes"] == 1
+    with pytest.raises(ValueError):
+        median_composite([])
+
+
+class SeriesFake(Fake):
+    def load_series(self, bbox, *, days, max_cloud, grid, n):
+        if self.behaviour == "down":
+            raise ProviderError("series down")
+        return [make_scene("healthy_forest", seed=i) for i in range(n)]
+
+
+def test_chain_composite_uses_series_and_degrades_to_single_scene():
+    a = SeriesFake("a", "ok")
+    r = chain([a]).load_composite(BBOX, n=3)
+    assert r.scene.meta["n_scenes"] == 3 and r.trail[0]["scenes"] == 3
+    # provider without series support still answers (single scene), so compositing never lowers availability
+    r2 = chain([Fake("plain", "ok")]).load_composite(BBOX, n=3)
+    assert r2.scene.source == "plain:scene"
+    # series source down -> falls through to the single-scene path of another source
+    r3 = chain([SeriesFake("a", "down"), Fake("b", "ok")]).load_composite(BBOX, n=3)
+    assert r3.scene.source == "b:scene" and r3.degraded

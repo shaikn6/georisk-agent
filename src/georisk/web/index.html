@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GeoRisk Agent</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{--bg:#f7f8fa;--fg:#1a1d23;--card:#fff;--line:#dfe3ea;--mut:#5c6675;--acc:#0b6bcb}
+@media(prefers-color-scheme:dark){:root{--bg:#12151a;--fg:#e8ebf0;--card:#1b2028;--line:#2b323d;--mut:#98a3b3;--acc:#5aa9ff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif}
+header{padding:14px 16px;border-bottom:1px solid var(--line)}h1{font-size:18px;margin:0}header p{margin:2px 0 0;color:var(--mut);font-size:13px}
+main{display:grid;grid-template-columns:1fr 380px;height:calc(100vh - 66px)}
+#map{height:100%}aside{padding:14px 16px;overflow:auto;border-left:1px solid var(--line)}
+@media(max-width:800px){main{grid-template-columns:1fr;grid-template-rows:50vh auto;height:auto}aside{border-left:0}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:6px 0}.bar i{display:block;height:100%}
+.row{display:flex;justify-content:space-between;gap:8px}.mut{color:var(--mut);font-size:13px}
+button,select{font:inherit;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+</style></head><body>
+<header><h1>GeoRisk Agent</h1><p>Click the map (US) to screen a site from live Sentinel-2 imagery + Copernicus DEM. Screening estimate, not an inspection.</p></header>
+<main><div id="map"></div><aside>
+<div class="chips" id="chips"></div>
+<div id="out" class="mut">Pick a preset or click anywhere on the map.</div></aside></main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const PRESETS=[["Houston bayou",29.7625,-95.3956],["Columbus, OH",39.956,-83.018],["Sacramento river",38.58,-121.5],["Denver foothills",39.7,-105.15]];
+const map=L.map("map").setView([39.5,-98],4);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap"}).addTo(map);
+let marker=null;const out=document.getElementById("out");
+const color=s=>s<25?"#2e9e5b":s<50?"#d9a520":s<75?"#e07b1a":"#d13b3b";
+function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e}
+function card(){const c=el("div","card");out.appendChild(c);return c}
+async function run(lat,lon){
+  if(marker)marker.remove();marker=L.marker([lat,lon]).addTo(map);map.setView([lat,lon],12);
+  out.replaceChildren(el("div","mut","Fetching imagery… (10–40 s)"));
+  let r;try{r=await fetch("/assess",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({lat,lon,radius_m:500,composite:1})})}
+  catch(e){out.replaceChildren(el("div","card","Network error."));return}
+  const j=await r.json();out.replaceChildren();
+  if(!r.ok){out.appendChild(el("div","card",r.status===503?"Imagery providers unavailable right now — try again shortly.":r.status===429?"Server busy, retry shortly.":"Request rejected."));return}
+  const top=card();top.appendChild(el("div","mut","Overall"));
+  top.appendChild(el("div","",`${j.overall} / 100 — ${j.overall_level}`));top.firstChild.nextSibling.style.cssText="font-size:22px;font-weight:600";
+  for(const h of j.hazards){if(!h.score){const c=card();c.appendChild(el("b","",h.name));c.appendChild(el("div","mut",h.note||h.status));continue}const s=h.score;const c=card(),row=el("div","row");row.append(el("b","",s.name),el("span","",`${s.score.toFixed(0)} · ${s.level}`));c.appendChild(row);
+    const b=el("div","bar"),i=el("i");i.style.width=s.score+"%";i.style.background=color(s.score);b.appendChild(i);c.appendChild(b);
+    for(const f of s.factors)c.appendChild(el("div","mut","• "+f))}
+  for(const [k,v] of Object.entries(j.calibrated||{})){const c=card();c.appendChild(el("b","",`Calibrated ${k}: ${(v.probability*100).toFixed(0)}%`));c.appendChild(el("div","mut",v.meaning+" (validated on held-out cities; modest skill)"))}
+  const n=card();n.appendChild(el("div","",j.narrative));
+  n.appendChild(el("div","mut",`Source: ${j.source||"?"} · confidence: ${j.confidence?.level||"?"}`));
+  for(const w of j.warnings||[])n.appendChild(el("div","mut","⚠ "+w));
+}
+map.on("click",e=>run(e.latlng.lat,e.latlng.lng));
+const chips=document.getElementById("chips");
+for(const [n,la,lo] of PRESETS){const b=el("button","",n);b.onclick=()=>run(la,lo);chips.appendChild(b)}
+</script></body></html>

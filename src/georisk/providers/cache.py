@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
+import threading
 import time
 from pathlib import Path
 
@@ -53,7 +55,7 @@ class SceneCache:
     def put(self, key: str, scene: Scene) -> None:
         try:
             self.dir.mkdir(parents=True, exist_ok=True)
-            tmp = self.dir / f"{key}.tmp.npz"
+            tmp = self.dir / f"{key}.{os.getpid()}.{threading.get_ident()}.tmp.npz"  # unique per writer
             meta = json.dumps(
                 {"source": scene.source, "acquired": scene.acquired, "cloud_cover": scene.cloud_cover,
                  "meta": {k: v for k, v in scene.meta.items() if isinstance(v, (str, int, float, type(None)))}}
