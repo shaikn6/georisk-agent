@@ -42,6 +42,13 @@ def _vector(spec: dict, features: Features, terrain: TerrainFeatures) -> np.ndar
     return np.array([out])
 
 
+def outside_domain(lat: float, lon: float, artifact: dict | None = None) -> list[str]:
+    """Tasks that have a fitted model whose training region does not contain (lat, lon)."""
+    art = load_artifact() if artifact is None else artifact
+    return [t for t, spec in art.items()
+            if (d := spec.get("domain")) and not (d[0] <= lat <= d[1] and d[2] <= lon <= d[3])]
+
+
 def calibrated_probabilities(features: Features, terrain: TerrainFeatures | None, artifact: dict | None = None,
                              lat: float | None = None, lon: float | None = None) -> dict:
     """{task: {"probability": p, "meaning": str}} for every task with a shipped model. Needs terrain; skips

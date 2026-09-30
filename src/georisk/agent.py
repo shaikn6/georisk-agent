@@ -7,7 +7,7 @@ import os
 from dataclasses import asdict, dataclass, field
 
 from .aoi import bbox_from_point
-from .calibration import calibrated_probabilities
+from .calibration import calibrated_probabilities, outside_domain
 from .confidence import Confidence, assess_confidence
 from .hazards import HazardContext, HazardOutcome, default_hazards, run_hazards
 from .providers import ProviderChain, build_default_chain
@@ -117,6 +117,9 @@ def assess(
 ) -> Assessment:
     bbox = bbox_from_point(lat, lon, radius_m)
     warnings: list[str] = []
+    for task in outside_domain(lat, lon):
+        warnings.append(f"{task} heuristic score is unvalidated here: its calibrated model only covers the "
+                        "regions it was trained on, so no probability is given")
     trail: list[dict] = []
     degraded_path = False
 
