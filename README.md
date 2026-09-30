@@ -165,9 +165,9 @@ How to read this honestly:
 - **Median compositing** (`composite=N`) of the N clearest scenes, with failover and single-scene degradation.
 - **Hardened API**: optional `X-API-Key` (`GEORISK_API_KEY`), per-client rate limit (`GEORISK_RATE_PER_MIN`; per instance, so best-effort on serverless), bounded in-flight work (`GEORISK_MAX_INFLIGHT`, 429 when saturated), security headers, strict input validation without echoing raw input, no internal error text in responses, LLM narrative off unless `GEORISK_ALLOW_LLM=1`, CSP on the demo page.
 - **Observability**: structured JSON logs with request IDs (no coordinates or IPs), Prometheus-format `/metrics` with bounded labels.
-- **Live demo** at `/`: click-to-assess satellite map.
+- **Live demo** at `/`: click-to-assess satellite map. Leads with the validated probabilities and shows which factors drive them (what-if effect of each factor versus a typical training site); the unvalidated heuristic index is collapsed and labelled.
 
-![GeoRisk demo, Cincinnati](docs/demo-cincinnati.png)
+![GeoRisk demo: calibrated probabilities with the factors that drive them](docs/demo-drivers.png)
 - 99 offline tests (fault injection, API security, rate limiting, metrics, calibration, model round-trips) + live smoke tests.
 
 ## Deploying (Vercel)

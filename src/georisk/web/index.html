@@ -30,6 +30,15 @@ h2{font:600 11px "Geist Mono",monospace;color:var(--mut);text-transform:uppercas
 .dial .num{position:absolute;inset:0;display:grid;place-items:center;font-size:54px;line-height:1;letter-spacing:-.03em;padding-top:6px}
 .lvl{font-size:30px;line-height:1;text-transform:capitalize}.sub{color:var(--mut);font-size:12px;margin-top:6px}
 .coord{margin-top:10px;font-size:11.5px;color:var(--mut)}
+.heroes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.hero1{text-align:center}.hero1 .dial{margin:0 auto}.hero1 .cap{font:600 11px "Geist Mono",monospace;text-transform:uppercase;letter-spacing:.12em;color:var(--mut);margin-top:4px}
+.hero1 .lvl{font-size:22px;margin-top:2px}
+.drv{display:grid;grid-template-columns:1fr 92px;gap:10px;align-items:center;padding:7px 0;border-top:1px dashed var(--line)}
+.drv .nm{font-size:13.5px;font-weight:500}.drv .dt{color:var(--mut);font-size:11.5px;line-height:1.35;margin-top:1px}
+.bal{position:relative;height:8px;background:var(--line)}.bal:before{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--mut);opacity:.6}
+.bal i{position:absolute;top:0;bottom:0}.ef{font:500 11px "Geist Mono",monospace;text-align:right;margin-top:3px}
+details.unv{border-top:1px solid var(--line);padding:12px 0}details.unv summary{cursor:pointer;font:600 11px "Geist Mono",monospace;text-transform:uppercase;letter-spacing:.12em;color:var(--mut)}
+.badge{display:inline-block;font:500 10.5px "Geist Mono",monospace;text-transform:uppercase;letter-spacing:.08em;border:1px solid var(--o);color:var(--o);padding:1px 6px;margin-left:6px;vertical-align:middle}
 .block{border-top:1px solid var(--line);padding:13px 0}
 .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.row b{font-weight:600;text-transform:capitalize}
 .lvltag{font:500 11px "Geist Mono",monospace;text-transform:uppercase;letter-spacing:.08em}
@@ -77,28 +86,48 @@ function dial(score){
     l.setAttribute("stroke",k<on?col(score):"var(--line)");svg.appendChild(l)}
   return svg}
 function segs(score){const t=el("div","track"),on=Math.round(score/100*20);for(let k=0;k<20;k++){const i=el("i");if(k<on)i.style.background=col(score);t.appendChild(i)}return t}
+function driverRows(list){
+  const max=Math.max(8,...list.map(d=>Math.abs(d.effect_pp))),wrap=el("div");
+  for(const d of list){const r=el("div","drv"),l=el("div");l.appendChild(el("div","nm",d.label));
+    l.appendChild(el("div","dt",d.parts.map(p=>`${p.name} ${p.value}${p.unit?" "+p.unit:""} (typical ${p.typical})`).join(" · ")));
+    const rt=el("div"),bal=el("div","bal"),i=el("i"),w=Math.abs(d.effect_pp)/max*50;
+    i.style.width=w+"%";i.style.background=d.effect_pp>0?"var(--o)":"var(--g)";i.style[d.effect_pp>0?"left":"right"]="50%";bal.appendChild(i);
+    rt.append(bal,el("div","ef",(d.effect_pp>0?"+":"")+d.effect_pp.toFixed(1)+" pp"));r.append(l,rt);wrap.appendChild(r)}
+  return wrap}
 function draw(j){
   box&&box.remove();pin&&pin.remove();seq=0;
   const [bw,bs,be,bn]=j.bbox;box=L.rectangle([[bs,bw],[bn,be]],{color:"#c8f03c",weight:2,dashArray:"5 4",fillOpacity:.12}).addTo(map);
   out.replaceChildren();out.className="";
-  const hero=rise(el("div","hero")),d=el("div","dial");d.append(dial(j.overall),el("div","num serif",String(Math.round(j.overall))));
-  const t=el("div"),lv=el("div","lvl serif",j.overall_level);lv.style.color=col(j.overall);
-  t.append(lv,el("div","sub","Overall screening index · 0–100"),el("div","coord mono",`${j.lat.toFixed(4)}°, ${j.lon.toFixed(4)}° · ${j.area_km2} km²`));hero.append(d,t);out.appendChild(hero);
-  for(const [k,v] of Object.entries(j.calibrated||{})){
-    const b=rise(el("div","block"));b.appendChild(el("h2","",`Calibrated ${k} probability`));
-    const p=el("div","prob");p.append(el("big","serif",(v.probability*100).toFixed(0)+"%"),el("span","f",v.meaning));b.appendChild(p);
-    b.appendChild(el("div","f","Fitted on FEMA / USGS labels, checked on held-out cities. Modest skill: rank sites with it, do not price them."));out.appendChild(b)}
-  out.appendChild(rise(el("h2","","Hazard breakdown")));
-  for(const h of j.hazards){const b=rise(el("div","block"));
-    if(!h.score){b.append(el("b","",h.name),el("div","f",h.note||h.status));out.appendChild(b);continue}
+  const cal=Object.entries(j.calibrated||{});
+  if(cal.length){
+    const hs=rise(el("div","heroes"));
+    for(const [k,v] of cal){const h=el("div","hero1"),d=el("div","dial"),pc=v.probability*100;
+      d.append(dial(pc),el("div","num serif",Math.round(pc)+"%"));const c=el("div","cap",k+" probability");h.append(d,c);hs.appendChild(h)}
+    out.appendChild(hs);
+    out.appendChild(rise(el("div","f",`${j.lat.toFixed(4)}°, ${j.lon.toFixed(4)}° · ${j.area_km2} km². Probabilities come from models fitted on FEMA and USGS records and checked on held-out cities: useful for ranking sites, not for pricing them.`)));
+    for(const [k,v] of cal){const b=rise(el("div","block"));b.appendChild(el("h2","",`Why ${k}: ${Math.round(v.probability*100)}%`));
+      b.appendChild(el("div","f",v.meaning+". Effect of each factor versus a typical training site:"));
+      b.appendChild(v.drivers&&v.drivers.length?driverRows(v.drivers):el("div","f","This site looks typical; no single factor stands out."));out.appendChild(b)}
+  }else{
+    const hero=rise(el("div","hero")),d=el("div","dial");d.append(dial(j.overall),el("div","num serif",String(Math.round(j.overall))));
+    const t=el("div"),lv=el("div","lvl serif",j.overall_level);lv.style.color=col(j.overall);const bd=el("span","badge","unvalidated");lv.appendChild(bd);
+    t.append(lv,el("div","sub","Heuristic screening index · 0–100"),el("div","coord mono",`${j.lat.toFixed(4)}°, ${j.lon.toFixed(4)}° · ${j.area_km2} km²`));hero.append(d,t);out.appendChild(hero);
+    out.appendChild(rise(el("div","f","No validated model covers this site, so only the heuristic index is available. In testing it was no better than chance.")));
+  }
+  const det=rise(document.createElement("details"));det.className="unv";
+  det.appendChild(el("summary","",`Heuristic index ${Math.round(j.overall)}/100 · unvalidated`));
+  det.appendChild(el("div","f","Hand-set spectral and terrain rules. Against FEMA and USGS records they scored 0.52–0.58 AUC (0.5 is a coin flip), so treat them as descriptive context."));
+  for(const h of j.hazards){const b=el("div","block");
+    if(!h.score){b.append(el("b","",h.name),el("div","f",h.note||h.status));det.appendChild(b);continue}
     const r=el("div","row"),tag=el("span","lvltag",`${h.score.level} · ${h.score.score.toFixed(0)}`);tag.style.color=col(h.score.score);
     r.append(el("b","",h.name.replace("_"," ")),tag);b.append(r,segs(h.score.score));
-    for(const f of h.score.factors)b.appendChild(el("div","f","· "+f));out.appendChild(b)}
+    for(const f of h.score.factors)b.appendChild(el("div","f","· "+f));det.appendChild(b)}
+  out.appendChild(det);
   const n=rise(el("div","block"));n.appendChild(el("div","f",j.narrative));const m=el("div","meta");
   const day=j.acquired?new Date(j.acquired).toISOString().slice(0,10):"n/a";
   for(const x of [`scene ${day}`,`cloud ${j.cloud_cover==null?"?":Math.round(j.cloud_cover)}%`,`confidence ${j.confidence?.level||"?"}`,j.source||""])m.appendChild(el("span","tag",x));
   n.appendChild(m);for(const w of j.warnings||[])n.appendChild(el("div","f","⚠ "+w));out.appendChild(n);
-  out.appendChild(rise(el("div","note","Heuristic indices come from spectral analysis and terrain; probabilities come from models validated leave-region-out. A screening estimate, not an inspection.")));
+  out.appendChild(rise(el("div","note","A screening estimate from satellite imagery and terrain. Effects are model associations (and can partly offset when factors are correlated), not proof of cause. Not an inspection.")));
 }
 async function run(lat,lon){
   pin&&pin.remove();pin=L.circleMarker([lat,lon],{radius:6,color:"#c8f03c",fillOpacity:1}).addTo(map);map.flyTo([lat,lon],12,{duration:.8});
