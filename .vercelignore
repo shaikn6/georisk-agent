@@ -1,0 +1,9 @@
+.venv
+tests
+validation_data
+.georisk_cache
+.git
+__pycache__
+.pytest_cache
+.ruff_cache
+HANDOFF.md
