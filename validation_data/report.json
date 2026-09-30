@@ -174,99 +174,100 @@
   },
   {
     "task": "fire",
-    "n": 98,
-    "positives": 50,
+    "n": 292,
+    "positives": 149,
     "meaning": "P(site lies inside a >=100-acre fire perimeter from 2005-2018)",
     "heuristic": {
-      "auc": 0.558,
+      "auc": 0.576,
       "auc_ci95": [
-        0.454,
-        0.675
+        0.513,
+        0.635
       ]
     },
     "model_random_kfold": {
-      "auc": 0.781,
+      "auc": 0.798,
       "auc_ci95": [
-        0.68,
-        0.866
+        0.745,
+        0.847
       ],
-      "brier": 0.1876,
+      "brier": 0.1786,
       "brier_baseline": 0.2499
     },
     "leave_region_out_by_model": {
       "logistic": {
-        "auc": 0.739,
+        "auc": 0.742,
         "auc_ci95": [
-          0.625,
-          0.836
+          0.685,
+          0.8
         ],
-        "brier": 0.2035,
+        "brier": 0.2018,
         "brier_baseline": 0.2499
       },
       "forest": {
-        "auc": 0.77,
+        "auc": 0.754,
         "auc_ci95": [
-          0.665,
-          0.861
+          0.697,
+          0.813
         ],
-        "brier": 0.2,
+        "brier": 0.2005,
         "brier_baseline": 0.2499
       },
       "knn": {
-        "auc": 0.799,
+        "auc": 0.75,
         "auc_ci95": [
-          0.697,
-          0.881
+          0.693,
+          0.802
         ],
-        "brier": 0.1833,
+        "brier": 0.2053,
         "brier_baseline": 0.2499
       },
       "ensemble": {
-        "auc": 0.778,
+        "auc": 0.763,
         "auc_ci95": [
-          0.671,
-          0.865
+          0.707,
+          0.817
         ],
-        "brier": 0.1871,
+        "brier": 0.1932,
         "brier_baseline": 0.2499
       },
       "sk_forest": {
-        "auc": 0.792,
+        "auc": 0.784,
         "auc_ci95": [
-          0.694,
-          0.882
+          0.733,
+          0.837
         ],
-        "brier": 0.2014,
+        "brier": 0.2002,
         "brier_baseline": 0.2499
       },
       "blend": {
-        "auc": 0.78,
+        "auc": 0.774,
         "auc_ci95": [
-          0.674,
-          0.869
+          0.721,
+          0.828
         ],
-        "brier": 0.1936,
+        "brier": 0.193,
         "brier_baseline": 0.2499
       }
     },
     "model_leave_region_out": {
-      "auc": 0.799,
+      "auc": 0.784,
       "auc_ci95": [
-        0.697,
-        0.881
+        0.733,
+        0.837
       ],
-      "brier": 0.1833,
+      "brier": 0.2002,
       "brier_baseline": 0.2499,
       "per_region_auc": {
-        "az_central": 0.62,
-        "nm_north": 0.96,
-        "norcal_sierra": 0.64,
-        "or_cascades": 0.6,
-        "socal": 0.98,
-        "wa_east_cascades": 0.59
+        "az_central": 0.57,
+        "co_front_range": 0.77,
+        "nm_north": 0.91,
+        "norcal_sierra": 0.81,
+        "or_cascades": 0.67,
+        "socal": 0.99,
+        "wa_east_cascades": 0.74
       }
     },
-    "served_model": "knn",
+    "served_model": "sk_forest",
     "ohio_holdout": null,
     "gate_applied_to": "model_leave_region_out (served model)",
     "gate": {

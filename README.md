@@ -111,17 +111,20 @@ Growing the flood set from 401 to 876 points lowered every number a little (the 
 0.863 to 0.844, Ohio from 0.857 to 0.821): the smaller sample was optimistic, so treat these as the
 reliable figures.
 
-**Wildfire** (98 points, 50 inside a perimeter; western US only)
+**Wildfire** (292 points, 149 inside a perimeter; western US only)
 
 | Model | AUC | 95% CI | Brier (baseline 0.250) |
 |---|---|---|---|
-| Original hand-tuned heuristic | 0.558 | 0.45–0.68 | n/a |
-| Logistic regression | 0.739 | 0.62–0.84 | 0.203 |
-| Bagged random forest (numpy) | 0.770 | 0.67–0.86 | 0.200 |
-| k-nearest neighbours **(served)** | 0.799 | 0.70–0.88 | 0.183 |
-| Average of logistic + forest + kNN | 0.778 | 0.67–0.86 | 0.187 |
-| Random forest (scikit-learn-trained, exported to numpy) | 0.792 | 0.69–0.88 | 0.201 |
-| Blend: logistic + scikit-learn forest | 0.780 | 0.67–0.87 | 0.194 |
+| Original hand-tuned heuristic | 0.576 | 0.51–0.64 | n/a |
+| Logistic regression | 0.742 | 0.69–0.80 | 0.202 |
+| Bagged random forest (numpy) | 0.754 | 0.70–0.81 | 0.201 |
+| k-nearest neighbours | 0.750 | 0.69–0.80 | 0.205 |
+| Average of logistic + forest + kNN | 0.763 | 0.71–0.82 | 0.193 |
+| Random forest (scikit-learn-trained, exported to numpy) **(served)** | 0.784 | 0.73–0.84 | 0.200 |
+| Blend: logistic + scikit-learn forest | 0.774 | 0.72–0.83 | 0.193 |
+
+Growing the fire set from 98 to 292 points also lowered the numbers (the previous best, kNN, went from 0.799 to
+0.750) and changed which model wins, which is what a small, noisy sample does.
 
 How to read this honestly:
 - The original heuristic scores were **statistically indistinguishable from chance** against ground truth.
@@ -137,8 +140,8 @@ How to read this honestly:
   beat tree ensembles, and it would break the serverless size limit.
 - A model ships only if leave-region-out AUC >= 0.6, its CI lower bound > 0.5 and Brier beats the base rate.
 - **Skill is modest, not deployment-grade for insurance or lending decisions.** Weak regions: flood in
-  New Orleans (AUC 0.54, pumped/leveed terrain) and Miami (0.62); fire in the
-  Pacific Northwest and Arizona (0.59-0.64).
+  New Orleans (AUC 0.54, pumped/leveed terrain) and Miami (0.62); fire in
+  central Arizona (0.57) and the Oregon Cascades (0.67).
 - Labels have known noise: FEMA maps lag the ground, fire perimeters are coarse, and the fire label
   asks "has burned before", which is a proxy for exposure, not a forecast.
 - Fire probabilities are **withheld outside the western US** (the training domain) instead of
