@@ -144,7 +144,7 @@ def evaluate(task: str, *paths: Path) -> dict:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--flood", type=Path, nargs="+", default=[Path("validation_data/flood.jsonl"), Path("validation_data/flood2.jsonl"), Path("validation_data/flood_ohio.jsonl")])
+    p.add_argument("--flood", type=Path, nargs="+", default=[Path("validation_data/flood.jsonl"), Path("validation_data/flood2.jsonl"), Path("validation_data/flood3.jsonl"), Path("validation_data/flood_ohio.jsonl")])
     p.add_argument("--fire", type=Path, default=Path("validation_data/fire.jsonl"))
     p.add_argument("--report", type=Path, default=Path("validation_data/report.json"))
     p.add_argument("--artifact", type=Path, default=Path("src/georisk/data/calibration.json"))
