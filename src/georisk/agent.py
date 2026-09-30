@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import asdict, dataclass, field
 
+from .analyst import build_facts, memo
 from .aoi import bbox_from_point
 from .calibration import calibrated_probabilities, outside_domain
 from .confidence import Confidence, assess_confidence
@@ -67,40 +67,6 @@ def _overall(scores: list[RiskScore]) -> tuple[float | None, str]:
     return v, "low" if v < 25 else "moderate" if v < 50 else "high" if v < 75 else "severe"
 
 
-def template_narrative(scores: list[RiskScore], f: Features, src: str) -> str:
-    if not scores:
-        return "No hazard could be scored for this location."
-    top = max(scores, key=lambda s: s.score)
-    parts = [f"Highest exposure: {top.name} ({top.level}, {top.score:.0f}/100). " + "; ".join(top.factors) + "."]
-    parts += [f"{s.name}: {s.level} ({s.score:.0f}/100)." for s in scores if s is not top]
-    parts.append(f"Based on {f.valid_fraction:.0%} usable pixels from {src}. Screening estimate only.")
-    return " ".join(parts)
-
-
-def llm_narrative(scores: list[RiskScore], f: Features, src: str) -> str | None:
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key or not scores:
-        return None
-    try:
-        import anthropic
-
-        facts = "\n".join(f"- {s.name}: {s.score:.0f}/100 ({s.level}); " + "; ".join(s.factors) for s in scores)
-        msg = anthropic.Anthropic(api_key=key, timeout=20).messages.create(
-            model=os.environ.get("GEORISK_MODEL", "claude-sonnet-5"),
-            max_tokens=300,
-            system=(
-                "You write 3-sentence physical-risk summaries for property screening. Use ONLY the "
-                "numbers provided. Do not invent locations, dates, or causes. State this is a "
-                "satellite screening estimate, not an inspection."
-            ),
-            messages=[{"role": "user", "content": f"Source: {src}\nUsable pixels: {f.valid_fraction:.0%}\n{facts}"}],
-        )
-        return msg.content[0].text.strip()
-    except Exception as exc:  # noqa: BLE001 - narrative is optional; never fail the assessment over it
-        log.warning("LLM narrative failed, using template: %s", exc)
-        return None
-
-
 def assess(
     lat: float,
     lon: float,
@@ -148,14 +114,15 @@ def assess(
     scores = [h.score for h in outcomes if h.score is not None]
     overall, lvl = _overall(scores)
     conf = assess_confidence(scene, terrain_ok=terrain is not None, degraded_path=degraded_path)
-    text = llm_narrative(scores, f, scene.source) if use_llm else None
+    calibrated = calibrated_probabilities(f, terrain, lat=lat, lon=lon) if is_real else {}
+    facts = build_facts(calibrated, scores=scores, overall=overall, overall_level=lvl, confidence=conf.level, acquired=scene.acquired,
+                        cloud_cover=scene.cloud_cover, warnings=warnings, source=scene.source)
+    narrative, narrative_source = memo(facts, use_llm=use_llm)
     return Assessment(
         lat=lat, lon=lon, radius_m=radius_m, bbox=bbox.as_list(), area_km2=round(bbox.area_km2(), 3),
         source=scene.source, acquired=scene.acquired, cloud_cover=scene.cloud_cover, features=f,
         terrain=terrain, hazards=outcomes, overall=overall, overall_level=lvl, confidence=conf,
         provenance={"imagery_trail": trail, "terrain": terrain is not None, "synthetic": not is_real,
                     "n_scenes": scene.meta.get("n_scenes", 1)},
-        narrative=text or template_narrative(scores, f, scene.source),
-        narrative_source="llm" if text else "template", warnings=warnings,
-        calibrated=calibrated_probabilities(f, terrain, lat=lat, lon=lon) if is_real else {},
+        narrative=narrative, narrative_source=narrative_source, warnings=warnings, calibrated=calibrated,
     )
