@@ -22,6 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 llm = ["anthropic>=0.40"]
+research = ["scikit-learn>=1.4"]
 dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.5"]
 
 [project.scripts]

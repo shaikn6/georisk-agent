@@ -83,3 +83,28 @@ def test_probability_withheld_outside_training_domain():
     f = extract_features(make_scene("floodplain"))
     assert "flood" in calibrated_probabilities(f, T, art, lat=35.0, lon=-90.0)
     assert calibrated_probabilities(f, T, art, lat=48.0, lon=-90.0) == {}  # outside the box: no extrapolation
+
+
+def test_sklearn_forest_exports_to_numpy_and_matches():
+    import pytest
+
+    pytest.importorskip("sklearn")
+    from georisk.validation.ensemble import SkForest, dump_model, load_model
+
+    rng = np.random.default_rng(3)
+    X = rng.normal(size=(200, 4))
+    y = ((X[:, 0] > 0.2) ^ (X[:, 1] > 0.5)).astype(int)  # interaction a linear model cannot fit
+    sk = SkForest(60).fit(X, y)
+    back = load_model(__import__("json").loads(__import__("json").dumps(dump_model("sk_forest", sk))))
+    assert np.allclose(back.predict_proba(X), sk.predict_proba(X))  # served copy needs no scikit-learn
+    from georisk.validation.metrics import auc
+
+    assert auc(y, back.predict_proba(X)) > 0.9
+
+
+def test_outside_domain_lists_tasks_the_model_does_not_cover():
+    from georisk.calibration import outside_domain
+
+    art = {"fire": {"domain": [32.0, 49.0, -124.0, -104.0]}, "flood": {"domain": [24.0, 43.0, -123.0, -78.0]}}
+    assert outside_domain(39.96, -83.0, art) == ["fire"]  # Columbus: flood covered, fire not
+    assert outside_domain(38.5, -122.7, art) == []

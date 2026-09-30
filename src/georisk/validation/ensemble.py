@@ -73,6 +73,29 @@ def _gini(y) -> float:
     return 2 * p * (1 - p)
 
 
+class SkForest(Forest):
+    """Trained with scikit-learn (research extra) but exported to the same JSON trees, so serving needs numpy only."""
+
+    def __init__(self, n_trees: int = 200, min_leaf: int = 3, seed: int = 0) -> None:
+        super().__init__(n_trees=n_trees, min_leaf=min_leaf, seed=seed)
+
+    def fit(self, X, y) -> SkForest:
+        from sklearn.ensemble import RandomForestClassifier
+
+        rf = RandomForestClassifier(self.n_trees, min_samples_leaf=self.min_leaf, random_state=self.seed).fit(X, y)
+        pos = list(rf.classes_).index(1)
+        self.trees = [_export_tree(e.tree_, 0, pos) for e in rf.estimators_]
+        return self
+
+
+def _export_tree(t, node: int, pos: int):
+    if t.children_left[node] == -1:
+        v = t.value[node][0]
+        return float((v[pos] + 0.5) / (v.sum() + 1.0))  # smoothed leaf probability
+    return [int(t.feature[node]), float(t.threshold[node]),
+            _export_tree(t, int(t.children_left[node]), pos), _export_tree(t, int(t.children_right[node]), pos)]
+
+
 class KNN:
     """Distance-weighted k-nearest neighbours in standardised feature space."""
 
@@ -108,16 +131,16 @@ class KNN:
         return m
 
 
-MEMBERS = {"logistic": Logistic, "forest": Forest, "knn": KNN}
+MEMBERS = {"logistic": Logistic, "forest": Forest, "sk_forest": SkForest, "knn": KNN}
 
 
 class Ensemble:
-    def __init__(self, l2: float = 3.0) -> None:
-        self.l2 = l2
+    def __init__(self, l2: float = 3.0, names: tuple[str, ...] = ("logistic", "forest", "knn")) -> None:
+        self.l2, self.names = l2, names
         self.models: dict = {}
 
     def fit(self, X, y) -> Ensemble:
-        self.models = {"logistic": Logistic(self.l2).fit(X, y), "forest": Forest().fit(X, y), "knn": KNN().fit(X, y)}
+        self.models = {n: (Logistic(self.l2) if n == "logistic" else MEMBERS[n]()).fit(X, y) for n in self.names}
         return self
 
     def member_probas(self, X) -> dict[str, np.ndarray]:
@@ -144,4 +167,4 @@ def dump_model(name: str, model) -> dict:
 def load_model(d: dict):
     """Dispatch on the family tag; untagged artifacts (before v0.3) are bare Logistic dicts."""
     kind = d.get("type", "logistic")
-    return Ensemble.from_dict(d) if kind == "ensemble" else MEMBERS[kind].from_dict(d)
+    return Ensemble.from_dict(d) if kind in ("ensemble", "blend") else MEMBERS[kind].from_dict(d)

@@ -94,15 +94,17 @@ the held-out region, so it is judged on places it has never seen. AUC 0.5 = coin
 | Model | AUC | 95% CI | Brier (baseline 0.250) |
 |---|---|---|---|
 | Original hand-tuned heuristic | 0.584 | 0.53–0.64 | n/a |
-| Logistic regression (served) | 0.845 | 0.81–0.88 | 0.163 |
-| Bagged random forest | 0.832 | 0.79–0.87 | 0.181 |
+| Logistic regression | 0.845 | 0.81–0.88 | 0.163 |
+| Bagged random forest (numpy) | 0.832 | 0.79–0.87 | 0.181 |
 | k-nearest neighbours | 0.786 | 0.74–0.83 | 0.191 |
-| Average of all three | 0.841 | 0.80–0.88 | 0.168 |
+| Average of logistic + forest + kNN | 0.841 | 0.80–0.88 | 0.168 |
+| Random forest (scikit-learn-trained, exported to numpy) | 0.856 | 0.82–0.89 | 0.184 |
+| Blend: logistic + scikit-learn forest **(served)** | 0.863 | 0.83–0.90 | 0.165 |
 
 **Ohio case study** (Columbus, Cincinnati, Cleveland, Dayton, Toledo, Akron; 140 points). Trained on
-*non-Ohio* regions only, tested in Ohio: logistic AUC **0.857**
-(0.78–0.92), ensemble 0.845, forest 0.792,
-kNN 0.780; the original heuristic scored **0.483** (no better than chance).
+*non-Ohio* regions only, tested in Ohio: blend model AUC **0.871**
+(0.80–0.93); logistic 0.857, forest 0.792, kNN 0.780.
+The original heuristic scored **0.483** there (no better than chance).
 
 **Wildfire** (98 points, 50 inside a perimeter; western US only)
 
@@ -110,23 +112,31 @@ kNN 0.780; the original heuristic scored **0.483** (no better than chance).
 |---|---|---|---|
 | Original hand-tuned heuristic | 0.558 | 0.45–0.68 | n/a |
 | Logistic regression | 0.739 | 0.62–0.84 | 0.203 |
-| Bagged random forest | 0.770 | 0.67–0.86 | 0.200 |
-| k-nearest neighbours (served) | 0.799 | 0.70–0.88 | 0.183 |
-| Average of all three | 0.778 | 0.67–0.86 | 0.187 |
+| Bagged random forest (numpy) | 0.770 | 0.67–0.86 | 0.200 |
+| k-nearest neighbours **(served)** | 0.799 | 0.70–0.88 | 0.183 |
+| Average of logistic + forest + kNN | 0.778 | 0.67–0.86 | 0.187 |
+| Random forest (scikit-learn-trained, exported to numpy) | 0.792 | 0.69–0.88 | 0.201 |
+| Blend: logistic + scikit-learn forest | 0.780 | 0.67–0.87 | 0.194 |
 
 How to read this honestly:
 - The original heuristic scores were **statistically indistinguishable from chance** against ground truth.
-  That is why the service now also returns a *calibrated probability* from a fitted model.
-- The served model for each task is whichever candidate has the best leave-region-out AUC. With a few
-  hundred samples the candidates are close (their intervals overlap), so the choice is not a proven win
-  over the runner-up. The candidate set was fixed in advance; there is no per-model hyper-parameter search.
+  That is why the service also returns a *calibrated probability* from a fitted model, and warns when a
+  hazard's heuristic score has no validated model at the site's location.
+- The served model for each task is whichever candidate has the best leave-region-out AUC. The candidate
+  set was fixed in advance with no per-model hyper-parameter search, but with a few hundred samples the top
+  candidates' intervals overlap, so the choice is not a proven win over the runner-up. A wider
+  scikit-learn benchmark (`python -m georisk.validation.benchmark`: gradient boosting, extra trees, SVM)
+  showed the same picture: gains of about 0.02 AUC over the logistic baseline, inside the noise.
+- Serving needs **numpy only**: scikit-learn (the `research` extra) trains the forest, which is exported to
+  plain JSON trees. PyTorch was deliberately not used: with ~10^2-10^3 tabular rows a neural net does not
+  beat tree ensembles, and it would break the serverless size limit.
 - A model ships only if leave-region-out AUC >= 0.6, its CI lower bound > 0.5 and Brier beats the base rate.
 - **Skill is modest, not deployment-grade for insurance or lending decisions.** Weak regions: flood in
-  New Orleans (AUC 0.54, pumped/leveed terrain), Miami (0.62); fire in the
+  New Orleans (AUC 0.54, pumped/leveed terrain) and Miami (0.62); fire in the
   Pacific Northwest and Arizona (0.59-0.64).
 - Labels have known noise: FEMA maps lag the ground, fire perimeters are coarse, and the fire label
   asks "has burned before", which is a proxy for exposure, not a forecast.
-- Fire probabilities are **withheld outside the western US** (the model's training domain) instead of
+- Fire probabilities are **withheld outside the western US** (the training domain) instead of
   extrapolating; flood is served across the sampled US range.
 
 ## What is implemented
@@ -145,9 +155,12 @@ How to read this honestly:
 - Dockerfile with a liveness healthcheck; configuration via environment variables.
 - **Calibrated probabilities** (`calibrated` field) from numpy-only models (logistic, bagged forest, kNN) fitted on FEMA/WFIGS labels; withheld outside their training domain.
 - **Median compositing** (`composite=N`) of the N clearest scenes, with failover and single-scene degradation.
-- **Hardened API**: optional `X-API-Key` (`GEORISK_API_KEY`), bounded in-flight work (`GEORISK_MAX_INFLIGHT`, 429 when saturated), strict input validation without echoing raw input, no internal error text in responses, LLM narrative off unless `GEORISK_ALLOW_LLM=1`, CSP on the demo page.
-- **Live demo** at `/` (click-to-assess map).
-- 89 offline tests (fault injection, API security, calibration, ensemble round-trips) + live smoke tests.
+- **Hardened API**: optional `X-API-Key` (`GEORISK_API_KEY`), per-client rate limit (`GEORISK_RATE_PER_MIN`; per instance, so best-effort on serverless), bounded in-flight work (`GEORISK_MAX_INFLIGHT`, 429 when saturated), security headers, strict input validation without echoing raw input, no internal error text in responses, LLM narrative off unless `GEORISK_ALLOW_LLM=1`, CSP on the demo page.
+- **Observability**: structured JSON logs with request IDs (no coordinates or IPs), Prometheus-format `/metrics` with bounded labels.
+- **Live demo** at `/`: click-to-assess satellite map.
+
+![GeoRisk demo, Cincinnati](docs/demo-cincinnati.png)
+- 99 offline tests (fault injection, API security, rate limiting, metrics, calibration, model round-trips) + live smoke tests.
 
 ## Known limitations (read before trusting a score)
 
