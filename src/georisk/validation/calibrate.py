@@ -18,7 +18,7 @@ from ..hazards.wildfire import WildfireHazard
 from ..scoring import Features
 from ..terrain import TerrainFeatures
 from .dataset import OHIO
-from .ensemble import KNN, Ensemble, Forest, dump_model
+from .ensemble import KNN, Ensemble, Forest, SkForest, dump_model
 from .metrics import Logistic, auc, bootstrap_auc_ci, brier, cross_validate, leave_group_out
 
 TASKS = {
@@ -35,6 +35,12 @@ TASKS = {
         "meaning": "P(site lies inside a >=100-acre fire perimeter from 2005-2018)",
     },
 }
+try:
+    import sklearn  # noqa: F401
+
+    _HAS_SKLEARN = True
+except ImportError:
+    _HAS_SKLEARN = False
 L2 = 3.0  # fixed a priori: no hyper-parameter search on a small sample
 GATE = {"min_auc": 0.6, "min_ci_low": 0.5}
 
@@ -99,6 +105,8 @@ def evaluate(task: str, *paths: Path) -> dict:
     lg = leave_group_out(X, y, [r["region"] for r in rows], l2=L2)  # the honest test: unseen regions
     groups = np.array([r["region"] for r in rows])
     members = {"logistic": lambda: Logistic(L2), "forest": Forest, "knn": KNN, "ensemble": lambda: Ensemble(L2)}
+    if _HAS_SKLEARN:  # research extra: trees are trained with scikit-learn, then served as plain numpy
+        members |= {"sk_forest": SkForest, "blend": lambda: Ensemble(L2, ("logistic", "sk_forest"))}
     lro = {name: _lro(mk, X, y, groups) for name, mk in members.items()}
     ohio = np.array([r["region"] in OHIO for r in rows])
     ohio_case = None

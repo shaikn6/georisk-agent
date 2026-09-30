@@ -1,0 +1,142 @@
+[
+  {
+    "task": "flood",
+    "n": 401,
+    "leave_region_out": {
+      "blend_logistic+gbm+extratrees": {
+        "auc": 0.863,
+        "ci95": [
+          0.829,
+          0.897
+        ],
+        "brier": 0.1522
+      },
+      "sk_random_forest": {
+        "auc": 0.856,
+        "ci95": [
+          0.824,
+          0.892
+        ],
+        "brier": 0.1555
+      },
+      "sk_hist_gbm": {
+        "auc": 0.85,
+        "ci95": [
+          0.813,
+          0.884
+        ],
+        "brier": 0.1543
+      },
+      "np_logistic": {
+        "auc": 0.845,
+        "ci95": [
+          0.808,
+          0.88
+        ],
+        "brier": 0.1629
+      },
+      "sk_svm_rbf": {
+        "auc": 0.844,
+        "ci95": [
+          0.807,
+          0.881
+        ],
+        "brier": 0.1587
+      },
+      "sk_extra_trees": {
+        "auc": 0.843,
+        "ci95": [
+          0.81,
+          0.882
+        ],
+        "brier": 0.1728
+      },
+      "np_ensemble": {
+        "auc": 0.841,
+        "ci95": [
+          0.803,
+          0.88
+        ],
+        "brier": 0.1676
+      },
+      "np_forest": {
+        "auc": 0.832,
+        "ci95": [
+          0.793,
+          0.87
+        ],
+        "brier": 0.1807
+      }
+    }
+  },
+  {
+    "task": "fire",
+    "n": 98,
+    "leave_region_out": {
+      "sk_extra_trees": {
+        "auc": 0.807,
+        "ci95": [
+          0.709,
+          0.887
+        ],
+        "brier": 0.184
+      },
+      "sk_random_forest": {
+        "auc": 0.793,
+        "ci95": [
+          0.696,
+          0.885
+        ],
+        "brier": 0.1855
+      },
+      "blend_logistic+gbm+extratrees": {
+        "auc": 0.783,
+        "ci95": [
+          0.681,
+          0.868
+        ],
+        "brier": 0.1914
+      },
+      "np_ensemble": {
+        "auc": 0.778,
+        "ci95": [
+          0.671,
+          0.865
+        ],
+        "brier": 0.1871
+      },
+      "np_forest": {
+        "auc": 0.77,
+        "ci95": [
+          0.665,
+          0.861
+        ],
+        "brier": 0.2
+      },
+      "np_logistic": {
+        "auc": 0.739,
+        "ci95": [
+          0.625,
+          0.836
+        ],
+        "brier": 0.2035
+      },
+      "sk_hist_gbm": {
+        "auc": 0.725,
+        "ci95": [
+          0.619,
+          0.827
+        ],
+        "brier": 0.2224
+      },
+      "sk_svm_rbf": {
+        "auc": 0.677,
+        "ci95": [
+          0.557,
+          0.778
+        ],
+        "brier": 0.2279
+      }
+    }
+  }
+]
