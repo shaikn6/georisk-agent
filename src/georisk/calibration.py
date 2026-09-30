@@ -42,6 +42,52 @@ def _vector(spec: dict, features: Features, terrain: TerrainFeatures) -> np.ndar
     return np.array([out])
 
 
+LABELS = {
+    "water_fraction": ("Open water", "%"), "built_fraction": ("Built-up surface", "%"), "mean_ndvi": ("Vegetation greenness (NDVI)", ""),
+    "mean_nbr": ("Burn/dryness index (NBR)", ""), "dry_fuel_fraction": ("Dry vegetation", "%"), "veg_fraction": ("Dense vegetation", "%"),
+    "veg_mean_nbr": ("Vegetation dryness (NBR)", ""), "t_mean_slope_deg": ("Mean slope", "deg"), "t_p90_slope_deg": ("Steep-slope extent", "deg"),
+    "t_relief_m": ("Local relief", "m"), "t_center_percentile": ("Elevation vs surroundings", "%"), "t_low_lying_fraction": ("Low-lying ground", "%"),
+}
+_PERCENT = {"water_fraction", "built_fraction", "dry_fuel_fraction", "veg_fraction", "t_center_percentile", "t_low_lying_fraction"}
+
+
+# Correlated features are occluded together: one at a time they produce offsetting, misleading effects.
+GROUPS = {
+    "Terrain steepness": ("t_mean_slope_deg", "t_p90_slope_deg"),
+    "Low-lying position": ("t_center_percentile", "t_low_lying_fraction"),
+    "Fuel dryness": ("dry_fuel_fraction", "veg_mean_nbr", "mean_nbr"),
+}
+
+
+def _units(spec: dict) -> list[tuple[str, tuple[str, ...]]]:
+    grouped = {c for g in GROUPS.values() if all(m in spec["features"] for m in g) for c in g}
+    units = [(label, g) for label, g in GROUPS.items() if all(m in spec["features"] for m in g)]
+    return units + [(LABELS.get(c, (c, ""))[0], (c,)) for c in spec["features"] if c not in grouped]
+
+
+def explain(model, spec: dict, x: np.ndarray, top: int = 5) -> list[dict]:
+    """What-if drivers: how much does the probability change if a feature (group) were a typical training site's value?
+
+    Positive effect = pushes the probability up relative to a typical site. Occlusion ignores interactions and
+    says nothing about causation; it explains the model, not the world.
+    """
+    base = float(model.predict_proba(x)[0])
+    idx = {c: i for i, c in enumerate(spec["features"])}
+    rows = []
+    for label, members in _units(spec):
+        alt = x.copy()
+        parts = []
+        for c in members:
+            alt[0, idx[c]] = spec["fill"][c]
+            name, unit = LABELS.get(c, (c, ""))
+            k = 100.0 if c in _PERCENT else 1.0
+            parts.append({"name": name, "unit": unit, "value": round(float(x[0, idx[c]]) * k, 2),
+                          "typical": round(float(spec["fill"][c]) * k, 2)})
+        rows.append({"label": label, "effect_pp": round((base - float(model.predict_proba(alt)[0])) * 100, 1), "parts": parts})
+    rows.sort(key=lambda r: -abs(r["effect_pp"]))
+    return [r for r in rows[:top] if abs(r["effect_pp"]) >= 0.5]
+
+
 def outside_domain(lat: float, lon: float, artifact: dict | None = None) -> list[str]:
     """Tasks that have a fitted model whose training region does not contain (lat, lon)."""
     art = load_artifact() if artifact is None else artifact
@@ -62,8 +108,9 @@ def calibrated_probabilities(features: Features, terrain: TerrainFeatures | None
         if d and lat is not None and lon is not None and not (d[0] <= lat <= d[1] and d[2] <= lon <= d[3]):
             continue  # outside the validated region: no probability beats a made-up one
         try:
-            p = float(load_model(spec["model"]).predict_proba(_vector(spec, features, terrain))[0])
-            out[task] = {"probability": round(p, 3), "meaning": spec["meaning"]}
+            model, x = load_model(spec["model"]), _vector(spec, features, terrain)
+            p = float(model.predict_proba(x)[0])
+            out[task] = {"probability": round(p, 3), "meaning": spec["meaning"], "drivers": explain(model, spec, x)}
         except Exception as exc:  # noqa: BLE001
             log.warning("calibrated %s probability failed: %s", task, exc)
     return out
