@@ -19,6 +19,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from .agent import assess, default_chain
+from .area import AreaError, assess_area, parse_geometry, plan_tiles
 from .providers.chain import AllProvidersFailed
 from .synthetic import ARCHETYPES
 
@@ -88,6 +89,11 @@ class AssessRequest(BaseModel):
     use_llm: bool = Field(default=False, description="LLM narrative; only honoured if GEORISK_ALLOW_LLM=1")
 
 
+class AreaRequest(BaseModel):
+    geometry: dict = Field(description="GeoJSON Polygon/MultiPolygon (or a one-feature Feature/FeatureCollection), WGS84")
+    tile_m: float = Field(default=1000, ge=250, le=5000, description="tile side in metres")
+
+
 class BatchRequest(BaseModel):
     items: list[AssessRequest] = Field(min_length=1, max_length=25)
 
@@ -135,6 +141,24 @@ def post_assess(req: AssessRequest) -> dict:
         raise HTTPException(503, {"error": "imagery unavailable", "trail": e.trail}) from e
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
+
+
+@app.post("/assess/area", dependencies=[Depends(require_key)])
+def post_area(req: AreaRequest, request: Request) -> dict:
+    """Cut an outline into tiles and assess each one independently (a failed tile never sinks the rest)."""
+    max_tiles = int(os.environ.get("GEORISK_MAX_AREA_TILES", "16"))
+    try:
+        tiles = plan_tiles(parse_geometry(req.geometry), req.tile_m, max_tiles)
+    except AreaError as e:
+        raise HTTPException(422, str(e)) from e
+    if not take(client_ip(request), cost=len(tiles)):
+        raise HTTPException(429, "rate limit exceeded")
+    if not _SLOTS.acquire(blocking=False):
+        raise HTTPException(429, "server busy, retry shortly")
+    try:
+        return assess_area(req.geometry, tile_m=req.tile_m, max_tiles=max_tiles)
+    finally:
+        _SLOTS.release()
 
 
 @app.post("/assess/batch", dependencies=[Depends(require_key)])
