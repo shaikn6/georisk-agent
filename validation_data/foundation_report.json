@@ -1,0 +1,189 @@
+[
+  {
+    "task": "flood",
+    "n": 863,
+    "missing_chips": 13,
+    "leave_region_out": {
+      "features: logistic": {
+        "auc": 0.834,
+        "auc_ci95": [
+          0.807,
+          0.866
+        ],
+        "brier": 0.166,
+        "brier_baseline": 0.2497
+      },
+      "features: forest": {
+        "auc": 0.833,
+        "auc_ci95": [
+          0.805,
+          0.86
+        ],
+        "brier": 0.1891,
+        "brier_baseline": 0.2497
+      },
+      "features: blend (logistic + forest)": {
+        "auc": 0.848,
+        "auc_ci95": [
+          0.823,
+          0.877
+        ],
+        "brier": 0.1693,
+        "brier_baseline": 0.2497
+      },
+      "prithvi only: logistic on PCA32": {
+        "auc": 0.661,
+        "auc_ci95": [
+          0.625,
+          0.697
+        ],
+        "brier": 0.2367,
+        "brier_baseline": 0.2497
+      },
+      "prithvi only: forest on PCA32": {
+        "auc": 0.668,
+        "auc_ci95": [
+          0.636,
+          0.702
+        ],
+        "brier": 0.2348,
+        "brier_baseline": 0.2497
+      },
+      "features + prithvi PCA16: logistic": {
+        "auc": 0.798,
+        "auc_ci95": [
+          0.767,
+          0.832
+        ],
+        "brier": 0.1827,
+        "brier_baseline": 0.2497
+      },
+      "features + prithvi PCA16: forest": {
+        "auc": 0.801,
+        "auc_ci95": [
+          0.77,
+          0.833
+        ],
+        "brier": 0.206,
+        "brier_baseline": 0.2497
+      },
+      "average: feature blend + prithvi logistic": {
+        "auc": 0.808,
+        "auc_ci95": [
+          0.78,
+          0.837
+        ],
+        "brier": 0.1888
+      }
+    },
+    "best": "features: blend (logistic + forest)",
+    "ohio_holdout": {
+      "n_ohio": 280,
+      "by_model": {
+        "features: blend (logistic + forest)": {
+          "auc": 0.833,
+          "auc_ci95": [
+            0.784,
+            0.88
+          ],
+          "brier": 0.1855
+        },
+        "prithvi only: logistic on PCA32": {
+          "auc": 0.624,
+          "auc_ci95": [
+            0.558,
+            0.685
+          ],
+          "brier": 0.227
+        },
+        "features + prithvi PCA16: forest": {
+          "auc": 0.785,
+          "auc_ci95": [
+            0.733,
+            0.838
+          ],
+          "brier": 0.208
+        }
+      }
+    }
+  },
+  {
+    "task": "fire",
+    "n": 286,
+    "missing_chips": 6,
+    "leave_region_out": {
+      "features: logistic": {
+        "auc": 0.733,
+        "auc_ci95": [
+          0.664,
+          0.79
+        ],
+        "brier": 0.2052,
+        "brier_baseline": 0.2498
+      },
+      "features: forest": {
+        "auc": 0.771,
+        "auc_ci95": [
+          0.702,
+          0.829
+        ],
+        "brier": 0.2037,
+        "brier_baseline": 0.2498
+      },
+      "features: blend (logistic + forest)": {
+        "auc": 0.764,
+        "auc_ci95": [
+          0.693,
+          0.822
+        ],
+        "brier": 0.1967,
+        "brier_baseline": 0.2498
+      },
+      "prithvi only: logistic on PCA32": {
+        "auc": 0.714,
+        "auc_ci95": [
+          0.653,
+          0.771
+        ],
+        "brier": 0.2197,
+        "brier_baseline": 0.2498
+      },
+      "prithvi only: forest on PCA32": {
+        "auc": 0.714,
+        "auc_ci95": [
+          0.654,
+          0.77
+        ],
+        "brier": 0.226,
+        "brier_baseline": 0.2498
+      },
+      "features + prithvi PCA16: logistic": {
+        "auc": 0.774,
+        "auc_ci95": [
+          0.709,
+          0.821
+        ],
+        "brier": 0.1911,
+        "brier_baseline": 0.2498
+      },
+      "features + prithvi PCA16: forest": {
+        "auc": 0.778,
+        "auc_ci95": [
+          0.715,
+          0.829
+        ],
+        "brier": 0.2048,
+        "brier_baseline": 0.2498
+      },
+      "average: feature blend + prithvi logistic": {
+        "auc": 0.78,
+        "auc_ci95": [
+          0.724,
+          0.827
+        ],
+        "brier": 0.1903
+      }
+    },
+    "best": "average: feature blend + prithvi logistic"
+  }
+]

@@ -147,6 +147,50 @@ How to read this honestly:
 - Fire probabilities are **withheld outside the western US** (the training domain) instead of
   extrapolating; flood is served across the sampled US range.
 
+## Does a satellite foundation model help? (experiment)
+
+I tested IBM/NASA's **Prithvi-EO-1.0-100M** (a 100-million-parameter model pre-trained on satellite imagery; Apache-2.0) against
+the lightweight models above, under the same leave-region-out rules. For each labelled site I fetched a 6-band, 224 x 224
+Sentinel-2 chip (30 m pixels, about 6.7 km square), ran Prithvi's encoder, and used the 768-number embedding (PCA-reduced inside each
+training fold, so nothing leaks from the held-out region) on its own and combined with the tabular features. Code: `src/georisk/foundation/`.
+
+**Flood** (863 sites)
+
+| Model | AUC | 95% CI | Brier |
+|---|---|---|---|
+| features: blend (logistic + forest) | 0.848 | 0.82–0.88 | 0.169 |
+| features: logistic | 0.834 | 0.81–0.87 | 0.166 |
+| features: forest | 0.833 | 0.81–0.86 | 0.189 |
+| average: feature blend + prithvi logistic | 0.808 | 0.78–0.84 | 0.189 |
+| features + prithvi PCA16: forest | 0.801 | 0.77–0.83 | 0.206 |
+| features + prithvi PCA16: logistic | 0.798 | 0.77–0.83 | 0.183 |
+| prithvi only: forest on PCA32 | 0.668 | 0.64–0.70 | 0.235 |
+| prithvi only: logistic on PCA32 | 0.661 | 0.62–0.70 | 0.237 |
+
+Ohio holdout (trained on other states): feature blend 0.833, Prithvi alone 0.624, features + Prithvi 0.785.
+
+**Wildfire** (286 sites)
+
+| Model | AUC | 95% CI | Brier |
+|---|---|---|---|
+| average: feature blend + prithvi logistic | 0.780 | 0.72–0.83 | 0.190 |
+| features + prithvi PCA16: forest | 0.778 | 0.71–0.83 | 0.205 |
+| features + prithvi PCA16: logistic | 0.774 | 0.71–0.82 | 0.191 |
+| features: forest | 0.771 | 0.70–0.83 | 0.204 |
+| features: blend (logistic + forest) | 0.764 | 0.69–0.82 | 0.197 |
+| features: logistic | 0.733 | 0.66–0.79 | 0.205 |
+| prithvi only: logistic on PCA32 | 0.714 | 0.65–0.77 | 0.220 |
+| prithvi only: forest on PCA32 | 0.714 | 0.65–0.77 | 0.226 |
+
+**Result: the big model does not earn its cost here.**
+- For flood, Prithvi alone is far worse (0.66 vs 0.85), and adding it to the tabular features *lowers* accuracy. Flood-zone status depends on fine
+  terrain and water detail that a 30 m, 6.7 km chip blurs away.
+- For wildfire, the best combination is marginally higher (0.780 vs 0.764), but the confidence intervals overlap almost completely, so it is a tie.
+- Cost: 443 MB of weights, PyTorch, and about 1 s per chip on a laptop GPU, versus milliseconds and numpy only for the served models. It also cannot run on the free serverless deployment.
+- Caveats: one encoder, one image date per chip, mean-pooled embeddings and no fine-tuning. A fine-tuned model or finer-resolution input might do better; this measures the cheap "frozen embedding" route.
+
+So the served models stay the small ones. This is the same answer DeepSeek/Qwen-style work keeps pointing to: a small, well-matched model beats a big general one when the task is narrow and the data is clean.
+
 ## What is implemented
 
 - Geodesic AOI construction; validated inputs.
@@ -199,8 +243,7 @@ Ubuntu build, MIT) is bundled and preloaded on Linux. Set `GEORISK_API_KEY` in t
 ## Roadmap (not implemented)
 
 - Hydrology-aware terrain features (HAND, flow accumulation) for flood context.
-- Swap the index heuristics for a learned head on a geospatial foundation-model backbone
-  (e.g. Prithvi or Clay via TorchGeo), evaluated against labelled hazard footprints.
+- Fine-tune a foundation model (Prithvi/Clay) end to end, and try finer-resolution input; the frozen-embedding route tested above did not help.
 - Larger label sets (more regions, MTBS burn severity), a spatial-block CV with more Ohio-specific hydrology, and probability recalibration (isotonic) once n > 1000.
 
 ## Project layout
