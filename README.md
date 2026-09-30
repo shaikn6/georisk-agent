@@ -1,5 +1,7 @@
 # georisk-agent
 
+**Live demo: https://georisk-agent.vercel.app** (click the map; real Sentinel-2 imagery, ~3 s per site)
+
 Satellite-derived **physical-risk screening** for a point of interest: pulls a recent, low-cloud
 Sentinel-2 scene, computes spectral indices, scores flood / wildfire-fuel / urban-density exposure
 with **explainable factors**, and (optionally) has an LLM write a short summary strictly from the
@@ -161,6 +163,13 @@ How to read this honestly:
 
 ![GeoRisk demo, Cincinnati](docs/demo-cincinnati.png)
 - 99 offline tests (fault injection, API security, rate limiting, metrics, calibration, model round-trips) + live smoke tests.
+
+## Deploying (Vercel)
+
+`vercel deploy --prod` works as-is: `app.py` is the entrypoint and `vercel.json` sets a 60 s function limit.
+Vercel's Python runtime lacks `libexpat`, which rasterio's GDAL needs, so `vendor/libexpat.so.1` (unmodified
+Ubuntu build, MIT) is bundled and preloaded on Linux. Set `GEORISK_API_KEY` in the project settings to require
+`X-API-Key`; the per-client rate limit is per instance, so treat it as best-effort on serverless.
 
 ## Known limitations (read before trusting a score)
 

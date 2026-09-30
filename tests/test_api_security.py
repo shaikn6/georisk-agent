@@ -133,3 +133,14 @@ def test_structured_log_has_no_location(caplog):
     events = [_json.loads(r.message) for r in caplog.records if r.message.startswith("{")]
     assert {"http_request", "assessment"} <= {e["event"] for e in events}
     assert "39.96" not in caplog.text and "-83.0" not in caplog.text
+
+
+def test_unhandled_exception_is_logged_with_type_but_response_stays_generic(monkeypatch, caplog):
+    def boom(*a, **k):
+        raise RuntimeError("provider blew up")
+    monkeypatch.setattr(api, "assess", boom)
+    quiet = TestClient(api.app, raise_server_exceptions=False)
+    with caplog.at_level("ERROR", logger="georisk.api"):
+        r = quiet.post("/assess", json=OK)
+    assert r.status_code == 500 and "provider blew up" not in r.text
+    assert "unhandled_exception" in caplog.text and "RuntimeError" in caplog.text
