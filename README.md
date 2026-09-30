@@ -165,10 +165,13 @@ How to read this honestly:
 - **Median compositing** (`composite=N`) of the N clearest scenes, with failover and single-scene degradation.
 - **Hardened API**: optional `X-API-Key` (`GEORISK_API_KEY`), per-client rate limit (`GEORISK_RATE_PER_MIN`; per instance, so best-effort on serverless), bounded in-flight work (`GEORISK_MAX_INFLIGHT`, 429 when saturated), security headers, strict input validation without echoing raw input, no internal error text in responses, LLM narrative off unless `GEORISK_ALLOW_LLM=1`, CSP on the demo page.
 - **Observability**: structured JSON logs with request IDs (no coordinates or IPs), Prometheus-format `/metrics` with bounded labels.
+- **Area mode** (`POST /assess/area`, or the Area button in the demo): send a GeoJSON outline, it is cut into tiles (default 1 km, up to 16), each tile is assessed independently and in parallel, and the result is a GeoJSON FeatureCollection with a summary (mean / highest tile / tiles above 50%). A failed tile greys out only itself. Rate limit is charged per tile; outlines over 400 km² are refused.
 - **Live demo** at `/`: click-to-assess satellite map. Leads with the validated probabilities and shows which factors drive them (what-if effect of each factor versus a typical training site); the unvalidated heuristic index is collapsed and labelled.
 
 ![GeoRisk demo: calibrated probabilities with the factors that drive them](docs/demo-drivers.png)
-- 99 offline tests (fault injection, API security, rate limiting, metrics, calibration, model round-trips) + live smoke tests.
+
+![Area mode: flood probability per 1 km tile along the Scioto River, Columbus](docs/demo-area.png)
+- 117 offline tests (fault injection, API security, rate limiting, metrics, calibration, model round-trips) + live smoke tests.
 
 ## Deploying (Vercel)
 

@@ -38,6 +38,10 @@ h2{font:600 11px "Geist Mono",monospace;color:var(--mut);text-transform:uppercas
 .bal{position:relative;height:8px;background:var(--line)}.bal:before{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--mut);opacity:.6}
 .bal i{position:absolute;top:0;bottom:0}.ef{font:500 11px "Geist Mono",monospace;text-align:right;margin-top:3px}
 details.unv{border-top:1px solid var(--line);padding:12px 0}details.unv summary{cursor:pointer;font:600 11px "Geist Mono",monospace;text-transform:uppercase;letter-spacing:.12em;color:var(--mut)}
+.chip.mode{font-weight:600;color:var(--acc);border:1px solid var(--acc);margin-right:4px}.chip.mode.on{background:var(--acc);color:var(--accfg)}
+.tabs{display:flex;gap:6px;margin:0 0 10px}.tab{font:500 12px "Geist Mono",monospace;text-transform:uppercase;letter-spacing:.08em;border:1px solid var(--line);background:none;color:var(--fg);padding:5px 10px;cursor:pointer}.tab.on{background:var(--acc);color:var(--accfg);border-color:var(--acc)}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--mut);margin:8px 0}.legend i{display:inline-block;width:10px;height:10px;margin-right:4px;vertical-align:-1px}
+.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}.stat div{border:1px solid var(--line);padding:8px}.stat b{display:block;font-size:22px;font-weight:400}.stat span{font:400 10.5px "Geist Mono",monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}
 .badge{display:inline-block;font:500 10.5px "Geist Mono",monospace;text-transform:uppercase;letter-spacing:.08em;border:1px solid var(--o);color:var(--o);padding:1px 6px;margin-left:6px;vertical-align:middle}
 .block{border-top:1px solid var(--line);padding:13px 0}
 .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.row b{font-weight:600;text-transform:capitalize}
@@ -130,6 +134,7 @@ function draw(j){
   out.appendChild(rise(el("div","note","A screening estimate from satellite imagery and terrain. Effects are model associations (and can partly offset when factors are correlated), not proof of cause. Not an inspection.")));
 }
 async function run(lat,lon){
+  if(typeof areaLayer!=="undefined")areaLayer.clearLayers();
   pin&&pin.remove();pin=L.circleMarker([lat,lon],{radius:6,color:"#c8f03c",fillOpacity:1}).addTo(map);map.flyTo([lat,lon],12,{duration:.8});
   out.className="";out.replaceChildren(el("h2","","Acquiring scene"),el("div","scan"),el("div","f","Fetching the newest clear Sentinel-2 image and terrain. 5–40 seconds."));
   let r;try{r=await fetch("/assess",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({lat,lon,radius_m:500})})}
@@ -137,7 +142,45 @@ async function run(lat,lon){
   if(!r.ok){out.replaceChildren(el("div","f",r.status===503?"Imagery providers are unavailable right now. Try again shortly.":r.status===429?"Server busy. Retry in a moment.":r.status===401?"This deployment needs an API key.":"Request rejected."));return}
   draw(await r.json());
 }
-map.on("click",e=>run(e.latlng.lat,e.latlng.lng));
+map.on("click",e=>{if(!areaOn){run(e.latlng.lat,e.latlng.lng);return}if(!cornerA){cornerA=e.latlng;pickMark&&pickMark.remove();pickMark=L.circleMarker(cornerA,{radius:6,color:"#c8f03c",fillOpacity:1}).addTo(map);out.replaceChildren(el("h2","","Area mode"),el("p","","Now click the opposite corner."))}else{const a=cornerA;cornerA=null;pickMark&&pickMark.remove();setArea(false);runArea(a,e.latlng)}});
 const chips=document.getElementById("chips");
 for(const [n,la,lo,oh] of PRESETS){const b=el("button","chip"+(oh?" oh":""),n);b.onclick=()=>run(la,lo);chips.appendChild(b)}
+
+/* ---------- area mode: click two corners, get a tile map ---------- */
+let areaOn=false,cornerA=null,areaLayer=L.layerGroup().addTo(map),pickMark=null;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const pcol=p=>p<.25?css("--g"):p<.5?css("--y"):p<.75?css("--o"):css("--r");
+function kmBetween(a,b){const R=6371,r=x=>x*Math.PI/180,dl=r(b.lat-a.lat),dn=r(b.lng-a.lng);
+  const h=Math.sin(dl/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+function setArea(on){areaOn=on;cornerA=null;pickMark&&pickMark.remove();document.getElementById("modeBtn").classList.toggle("on",on);
+  out.className=on?"":out.className;if(on){out.className="intro";out.replaceChildren(el("h2","","Area mode"),el("p","","Click one corner of the area, then the opposite corner. GeoRisk cuts it into tiles and assesses each one. Up to 16 tiles."),el("p","sub","Tip: roughly 4 km × 4 km is the biggest area at 1 km tiles; larger areas use bigger tiles."))}}
+async function runArea(a,b){
+  const w=Math.min(a.lng,b.lng),e=Math.max(a.lng,b.lng),so=Math.min(a.lat,b.lat),no=Math.max(a.lat,b.lat);
+  const wkm=kmBetween({lat:so,lng:w},{lat:so,lng:e}),hkm=kmBetween({lat:so,lng:w},{lat:no,lng:w});
+  if(wkm<.3||hkm<.3){out.replaceChildren(el("div","f","That area is too small. Pick corners at least 300 m apart."));return}
+  let tile=Math.max(1000,Math.ceil(Math.sqrt(wkm*hkm/14)*4)*250);tile=Math.min(5000,tile);
+  areaLayer.clearLayers();box&&box.remove();pin&&pin.remove();
+  const rect=L.rectangle([[so,w],[no,e]],{color:"#c8f03c",weight:2,dashArray:"5 4",fillOpacity:.05}).addTo(areaLayer);map.fitBounds(rect.getBounds(),{padding:[60,60]});
+  out.className="";out.replaceChildren(el("h2","","Assessing tiles"),el("div","scan"),el("div","f",`About ${Math.round(wkm*hkm)} km² in ${tile/1000} km tiles, run in parallel. Usually 10–40 seconds.`));
+  let r;try{r=await fetch("/assess/area",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({geometry:{type:"Polygon",coordinates:[[[w,so],[e,so],[e,no],[w,no],[w,so]]]},tile_m:tile})})}
+  catch{out.replaceChildren(el("div","f","Network error."));return}
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){out.replaceChildren(el("div","f",r.status===422&&typeof j.details!=="undefined"?"Area rejected.":r.status===429?"Too many requests. Wait a minute and try a smaller area.":typeof j.detail==="string"?j.detail:"Could not assess that area."));return}
+  drawArea(j)}
+function drawArea(j){
+  seq=0;out.replaceChildren();const tasks=Object.keys(j.summary).filter(k=>typeof j.summary[k]==="object");
+  let cur=tasks[0];const tabs=el("div","tabs"),body=el("div");
+  const legend=el("div","legend");[["<25%","--g"],["25–50%","--y"],["50–75%","--o"],[">75%","--r"]].forEach(([t,c])=>{const i=el("i");i.style.background=css(c);const sp=el("span");sp.append(i,t);legend.appendChild(sp)});
+  function paint(){areaLayer.eachLayer(l=>{if(l._tile){const p=l._tile.calibrated&&l._tile.calibrated[cur];l.setStyle(p==null?{color:"#888",fillColor:"#888",fillOpacity:.25,weight:1,dashArray:"3 3"}:{color:pcol(p),fillColor:pcol(p),fillOpacity:.5,weight:1.5,dashArray:null})}});
+    body.replaceChildren();const S=j.summary[cur];
+    const st=el("div","stat");[[Math.round(S.mean*100)+"%","mean"],[Math.round(S.max*100)+"%","highest tile"],[S.tiles_above_50pct+" / "+j.summary.assessed,"tiles ≥ 50%"]].forEach(([v,l])=>{const d=el("div");d.append(el("b","serif",v),el("span","",l));st.appendChild(d)});
+    body.append(st);const w=el("div","f");w.textContent="Highest-probability tile: click to zoom.";const btn=el("button","chip","Zoom to highest tile");btn.onclick=()=>map.flyTo([S.worst_tile.lat,S.worst_tile.lon],15);body.append(w,btn)}
+  tasks.forEach(k=>{const t=el("button","tab"+(k===cur?" on":""),k);t.onclick=()=>{cur=k;tabs.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.textContent===k));paint()};tabs.appendChild(t)});
+  j.features.forEach(f=>{const c=f.geometry.coordinates[0],lats=c.map(x=>x[1]),lons=c.map(x=>x[0]);
+    const l=L.rectangle([[Math.min(...lats),Math.min(...lons)],[Math.max(...lats),Math.max(...lons)]],{weight:1.5}).addTo(areaLayer);l._tile=f.properties;
+    const p=f.properties;l.bindTooltip(p.ok?Object.entries(p.calibrated).map(([k,v])=>`${k}: ${Math.round(v*100)}%`).join("  ·  ")||"no calibrated model here":p.error)});
+  out.append(rise(el("h2","","Area result")),rise(el("div","f",`${j.summary.assessed} of ${j.summary.tiles} tiles assessed (${j.summary.tile_m/1000} km tiles)`+(j.summary.failed?`; ${j.summary.failed} failed (shown grey).`:"."))),tabs,body,legend,
+    rise(el("div","note","Each tile is assessed on its own, so a gap in imagery only greys out that tile. Probabilities are validated models with modest skill: use them to compare places, not to price them.")));
+  paint()}
+const modeBtn=el("button","chip mode","Area");modeBtn.id="modeBtn";modeBtn.onclick=()=>setArea(!areaOn);document.getElementById("chips").prepend(modeBtn);
 </script></body></html>
