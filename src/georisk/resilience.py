@@ -28,18 +28,25 @@ def retry(
     retry_on: tuple[type[BaseException], ...] = (Exception,),
     never_retry: tuple[type[BaseException], ...] = (),
     sleep: Callable[[float], None] = time.sleep,
+    budget_s: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> T:
-    """Call ``fn`` up to ``attempts`` times with exponential backoff."""
+    """Call ``fn`` up to ``attempts`` times with exponential backoff.
+
+    ``budget_s`` bounds the total time spent on this call: once the time used plus the next backoff would exceed it, the last
+    error is raised instead of retrying, so a hung provider cannot eat the whole request (callers then fail over).
+    """
     if attempts < 1:
         raise ValueError("attempts must be >= 1")
     delay = base_delay
+    t0 = clock()
     for i in range(1, attempts + 1):
         try:
             return fn()
         except never_retry:
             raise
         except retry_on as exc:
-            if i == attempts:
+            if i == attempts or (budget_s is not None and clock() - t0 + delay >= budget_s):
                 raise
             log.warning("attempt %d/%d failed (%s); retrying in %.1fs", i, attempts, exc, delay)
             sleep(delay)

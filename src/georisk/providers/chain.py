@@ -39,6 +39,7 @@ class ProviderChain:
         cache: SceneCache | None = None,
         fallback: SceneProvider | None = None,
         sleep=None,
+        clock=None,
     ) -> None:
         if not providers and fallback is None:
             raise ValueError("at least one provider is required")
@@ -48,6 +49,7 @@ class ProviderChain:
         self.fallback = fallback
         self.breakers = {p.name: CircuitBreaker(failure_threshold=2, cooldown=120.0) for p in providers}
         self._sleep = sleep
+        self._clock = clock  # injectable for tests; the retry helper's default is the monotonic clock
 
     def health(self) -> dict[str, dict]:
         out: dict[str, dict] = {}
@@ -87,8 +89,8 @@ class ProviderChain:
                 scenes = self.breakers[p.name].call(
                     lambda p=p, series=series: retry(
                         lambda: series(bbox, days=days, max_cloud=max_cloud, grid=grid, n=n),
-                        attempts=self.settings.retry_attempts, never_retry=(NoSceneFound,),
-                        **({"sleep": self._sleep} if self._sleep else {}),
+                        attempts=self.settings.retry_attempts, never_retry=(NoSceneFound,), budget_s=self.settings.provider_budget_s,
+                        **({"sleep": self._sleep} if self._sleep else {}), **({"clock": self._clock} if self._clock else {}),
                     )
                 )
                 comp = median_composite(scenes)
@@ -115,9 +117,11 @@ class ProviderChain:
             if hit:
                 return ChainResult(hit, [{"source": "cache", "outcome": "ok"}])
 
-        retry_kwargs: dict = {"attempts": self.settings.retry_attempts, "never_retry": (NoSceneFound,)}
+        retry_kwargs: dict = {"attempts": self.settings.retry_attempts, "never_retry": (NoSceneFound,), "budget_s": self.settings.provider_budget_s}
         if self._sleep:
             retry_kwargs["sleep"] = self._sleep
+        if self._clock:
+            retry_kwargs["clock"] = self._clock
         for p in self.providers:
             try:
                 scene = self.breakers[p.name].call(

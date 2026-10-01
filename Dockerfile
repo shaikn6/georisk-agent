@@ -1,6 +1,8 @@
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 GEORISK_CACHE_DIR=/data/cache
 WORKDIR /app
+# rasterio's bundled GDAL needs libexpat, which the slim base image lacks (live imagery fails with ImportError without it)
+RUN apt-get update && apt-get install -y --no-install-recommends libexpat1 && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml README.md ./
 COPY src ./src
 RUN pip install . && useradd -m app && mkdir -p /data/cache && chown -R app /data

@@ -2,31 +2,30 @@
 
 **Live demo: https://georisk-agent.vercel.app** (click the map; real Sentinel-2 imagery, ~3 s per site)
 
-Satellite-derived **physical-risk screening** for a point of interest: pulls a recent, low-cloud
-Sentinel-2 scene, computes spectral indices, scores flood / wildfire-fuel / urban-density exposure
-with **explainable factors**, and (optionally) has an LLM write a short summary strictly from the
-computed numbers.
+Satellite-derived **physical-risk screening** for a US site or outline: pulls a recent Sentinel-2 scene, the Copernicus elevation model and
+the high-voltage grid map; returns **calibrated flood and wildfire probabilities with their track record and the factors that drive them**, an
+**experimental solar-siting energy lens**, and a plain-English analyst memo built only from the numbers.
 
-It is a compact, honest GeoAI pipeline: real imagery in, transparent scoring out, no black box.
+It is a compact, honest GeoAI system: every number is validated on held-out places against public records (FEMA, USGS), weaknesses are
+written next to the result, and each part fails alone.
 
 ```mermaid
 flowchart TD
-    A[lat / lon / radius] --> B[AOI bbox, geodesic]
-    B --> C{fresh cache?}
-    C -- hit --> F
-    C -- miss --> D[Provider chain<br/>retry + circuit breaker per source]
-    D --> D1[Earth Search]
-    D1 -- fails --> D2[Planetary Computer]
-    D2 -- fails --> D3[stale cache]
-    D3 -- fails --> D4[synthetic, opt-in only]
-    D1 & D2 & D3 & D4 --> F[Scene + provenance trail]
-    B --> T[Copernicus DEM, optional]
-    F --> G[Spectral indices + features]
-    T --> H
-    G --> H[Hazard plug-ins<br/>each isolated]
-    H --> I[Confidence + warnings]
-    I --> J[Narrative: template or LLM]
-    J --> K[CLI / FastAPI / batch]
+    A[lat/lon or GeoJSON outline] --> B[AOI + tiles]
+    B --> P{{read in parallel}}
+    P --> I[Imagery chain<br/>Earth Search -> Planetary -> stale cache<br/>20 s budget per source, circuit breakers]
+    P --> D[DEM context<br/>terrain + river height + topography]
+    P --> G[Grid proximity<br/>HIFLD lines >= 100 kV]
+    I --> F[Imagery features + heuristic scores]
+    I -- no clear scene --> X[Imagery-free results only]
+    D --> M
+    G --> M
+    F --> M[Models: flood, fire, solar<br/>blend / ensemble, recalibrated]
+    X --> M
+    M --> E[Evidence: track record + drivers + caveat]
+    E --> N[Analyst memo<br/>number-checked]
+    N --> O[FastAPI / demo / area GeoJSON / CLI]
+    C[(result cache<br/>single-flight)] -.-> O
 ```
 
 ## Design: independent parts that fail alone
@@ -41,6 +40,10 @@ answer instead of destroying it — and the response *says* what degraded.
 | Everything is down and no cache | HTTP 503 with the full per-source trail (or synthetic data only if `GEORISK_ALLOW_SYNTHETIC=1`, always flagged, confidence 0) | `error`, `trail` |
 | A source keeps failing | Circuit opens: later requests skip it instantly, half-open after cooldown | `/health/deep` shows circuit state |
 | DEM / terrain unavailable | Flood and wildfire score from imagery only | hazard `status: degraded`, confidence -0.10, warning |
+| River-height (DEM context) read fails | Flood probability uses typical values for it | warning: river-height data unavailable |
+| No clear satellite scene (e.g. weeks of cloud) | Results that need no imagery (solar) are returned; flood and fire are withheld | warning: imagery unavailable, `provenance.imagery: false`, confidence low |
+| Grid service is down | Solar is withheld, not guessed from a median | warning: grid unavailable |
+| An imagery source hangs | After a 20 s budget (`GEORISK_PROVIDER_BUDGET_S`) it stops retrying and fails over | `provenance.imagery_trail` |
 | One hazard raises | That hazard is `failed`; the others still score | hazard `status: failed`, warning |
 | A cache file is corrupt | Discarded and refetched, never fatal | logged |
 | LLM unavailable / no key | Deterministic template narrative | `narrative_source: template` |
@@ -263,7 +266,7 @@ So there is no "unusual site" warning; the evidence table above is the uncertain
 - **Pluggable hazards** (flood, wildfire, urban density), each isolated, each returning its factors.
 - **Confidence score** with explicit reasons (cloud, staleness, missing terrain, fallback used).
 - FastAPI: `/assess`, `/assess/batch` (per-item isolation, bounded), `/health`, `/health/deep`.
-- Dockerfile with a liveness healthcheck; configuration via environment variables.
+- Dockerfile (with `libexpat1`) and a liveness healthcheck; configuration via environment variables.
 - **Calibrated probabilities** (`calibrated` field) from numpy-only models (logistic, bagged forest, kNN) fitted on FEMA/WFIGS labels; withheld outside their training domain.
 - **Median compositing** (`composite=N`) of the N clearest scenes, with failover and single-scene degradation.
 - **Hardened API**: optional `X-API-Key` (`GEORISK_API_KEY`), per-client rate limit (`GEORISK_RATE_PER_MIN`; per instance, so best-effort on serverless), bounded in-flight work (`GEORISK_MAX_INFLIGHT`, 429 when saturated), security headers, strict input validation without echoing raw input, no internal error text in responses, LLM narrative off unless `GEORISK_ALLOW_LLM=1`, CSP on the demo page.
@@ -271,11 +274,14 @@ So there is no "unusual site" warning; the evidence table above is the uncertain
 - **Area mode** (`POST /assess/area`, or the Area button in the demo): send a GeoJSON outline, it is cut into tiles (default 1 km, up to 16), each tile is assessed independently and in parallel, and the result is a GeoJSON FeatureCollection with a summary (mean / highest tile / tiles above 50%). A failed tile greys out only itself. Rate limit is charged per tile; outlines over 400 km² are refused.
 - **Analyst memo**: every assessment includes a plain-English risk note (headline probabilities, what drives them, suggested use, imagery date, warnings) built only from the assessment's numbers. An optional LLM rewrite (`use_llm` + `GEORISK_ALLOW_LLM=1`) is accepted only if every number it writes appears in the facts it was given; otherwise the template is used.
 - **Live demo** at `/`: click-to-assess satellite map with place search (OpenStreetMap geocoder, US only), shareable links (`/#lat,lon`) and GeoJSON/CSV export of area results (CSV cells are neutralised against spreadsheet formula injection). Leads with the validated probabilities and shows which factors drive them (what-if effect of each factor versus a typical training site); the unvalidated heuristic index is collapsed and labelled.
+- **River height, topography and grid proximity** features (`hydrology.py`, `grid.py`) read in parallel with imagery; a failure of any one only costs its own features.
+- **Result cache** (bounded, expiring, single-flight) and a per-provider time budget with failover.
+- **Docker image** verified in CI: it must import the real imagery stack (it once shipped without `libexpat`, so live imagery returned a 500 while offline tests passed).
+- 217 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
 
 ![GeoRisk demo: calibrated probabilities with the factors that drive them](docs/demo-drivers.png)
 
 ![Area mode: flood probability per 1 km tile along the Scioto River, Columbus](docs/demo-area.png)
-- 213 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
 
 ## Energy lens: solar siting (experimental)
 
@@ -348,43 +354,50 @@ Ubuntu build, MIT) is bundled and preloaded on Linux. Set `GEORISK_API_KEY` in t
 
 ## Known limitations (read before trusting a score)
 
-- The 0-100 **scores are still hand-set screening heuristics** (validated as near-chance, see above).
-  Use the `calibrated` probability where present, and treat it as modest-skill screening, not a loss estimate.
-- Wildfire is inferred from vegetation amount, vegetation dryness (NBR) and slope. It ignores climate,
-  fuel type, wind and fuel moisture ground truth. Treat it as a *fuel-condition* signal, not fire
-  probability.
-- Flood exposure uses open-water and impervious-surface share from a single date. It now uses elevation and slope, but still has **no
-  hydrology, drainage network or return-period data**, so it cannot tell you a parcel is in a
-  regulated floodplain.
-- 10–20 m pixels: cannot resolve individual buildings or defensible space.
-- The Copernicus DEM is a *surface* model (buildings and canopy included). A 3x3 median removes
-  single-pixel spikes, but dense high-rise areas still read rougher than the bare ground beneath.
-- One scene, not a time series: seasonal effects (dormancy, snow, irrigation) are not modelled.
+- **Probabilities are modest-skill screening, not loss estimates or a regulated floodplain determination.** Flood AUC about 0.87 and fire about 0.78 on held-out
+  places, each with a track-record table above. Confirm with an official determination or inspection before relying on one.
+- The 0-100 **heuristic scores are descriptive only** (validated as near chance, shown collapsed and labelled unvalidated).
+- **Flood** is weakest in Toledo, New Orleans (pumped, leveed) and Miami, and can flag steep creek-side hillsides (a Santa Rosa hillside scores 88%; FEMA says outside a flood zone).
+  FEMA maps lag the ground and exclude unmapped areas, so labels are noisy.
+- **Wildfire** labels mean "has burned before" (a perimeter of 100+ acres, 2005-2018), a proxy for exposure and not a forecast. Western US only (probability withheld elsewhere);
+  weakest in central Arizona and the Oregon Cascades; a site inside the 2018 Camp Fire perimeter scores only 36%.
+- **Solar siting is experimental**: AUC 0.68 across states, close to chance in flat farmland such as Ohio. It compares terrain and grid distance only; irradiance, land price, parcels, substation capacity and permitting are not assessed.
+- 10-30 m pixels: cannot resolve buildings, defensible space or individual parcels. The Copernicus DEM is a *surface* model (a 3x3 median removes spikes, but dense high-rise areas read rough).
+- One scene, not a time series: seasonal effects (dormancy, snow, irrigation) and change over time are not modelled.
+- Rate limits are per instance on serverless, so they are best-effort there. The demo calls a public geocoder from the browser.
+- Training sets are a few hundred to a few thousand points (flood 876, fire 292, solar 3,000): intervals are reported, and numbers drop when data grows, which is why only the larger-sample figures are quoted.
 
 ## Roadmap (not implemented)
 
-- Hydrology-aware terrain features (HAND, flow accumulation) for flood context.
-- Fine-tune a foundation model (Prithvi/Clay) end to end, and try finer-resolution input; the frozen-embedding route tested above did not help.
-- Larger label sets (more regions, MTBS burn severity), a spatial-block CV with more Ohio-specific hydrology, and probability recalibration (isotonic) once n > 1000.
+- Land use and parcel context for flat farmland, where terrain and grid distance cannot separate solar sites from neighbouring fields (the experimental lens's main gap); substation capacity when a stable open source is available.
+- Per-state caveats and reliability in the artifact, so the weakest regions are flagged automatically at serving time.
+- Time series: change detection and seasonality instead of one scene.
+- Fine-tune a foundation model (Prithvi/Clay) end to end, or try finer-resolution input; the frozen-embedding route tested above did not help.
+- Larger label sets (more regions, MTBS burn severity) and isotonic recalibration once n > 1000.
 
 ## Project layout
 
 ```
 src/georisk/
-  aoi.py        geodesic bounding box
-  providers/    base contract, earth_search, planetary, synthetic, cache, chain (failover)
-  resilience.py retry + circuit breaker
-  terrain.py    DEM -> slope / relative elevation
-  hazards/      flood, wildfire, urban plug-ins + isolated runner
-  confidence.py trust score with reasons
-  config.py     environment-driven settings
-  indices.py    NDVI / NDWI / NDBI / NBR
-  scoring.py    scene -> features
-  synthetic.py  deterministic offline scenes
-  agent.py      orchestration + optional LLM narrative
-  api.py        FastAPI
-  cli.py        command line
-tests/
+  agent.py          orchestration: parallel reads, graceful degradation, models, memo
+  api.py            FastAPI: /assess, /assess/area, /assess/batch, /health*, /metrics, demo page
+  area.py           outline -> tiles -> independent assessments (GeoJSON)
+  analyst.py        number-checked analyst memo
+  calibration.py    served models: recalibration, evidence, drivers, domain guard
+  resultcache.py    bounded single-flight cache
+  providers/        imagery chain (Earth Search -> Planetary), disk cache, retry + circuit breaker
+  terrain.py        DEM -> slope, river-height and topography inputs
+  hydrology.py      pits, D8 flow, accumulation, streams, HAND, topography
+  grid.py           high-voltage line proximity (HIFLD)
+  hazards/          flood, wildfire, urban heuristics + isolated runner
+  confidence.py     trust score with reasons
+  validation/       labels, sampling, collectors, calibrate.py (train + gate), benchmark, ensemble, metrics
+  foundation/       Prithvi experiment (research; needs the `deep` extra)
+  web/index.html    single-file demo (map, drivers, area, search, export)
+  data/calibration.json   the served models
+tests/              217 offline tests
+scripts/loadtest.py load test
+validation_data/    labelled points, collected features, reports (reproducible)
 ```
 
 ## License

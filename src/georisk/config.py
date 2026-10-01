@@ -18,6 +18,7 @@ class Settings:
     max_cloud: float = field(default_factory=lambda: _f("GEORISK_MAX_CLOUD", 30.0))
     lookback_days: int = field(default_factory=lambda: int(_f("GEORISK_LOOKBACK_DAYS", 60)))
     http_timeout_s: float = field(default_factory=lambda: _f("GEORISK_HTTP_TIMEOUT_S", 30.0))
+    provider_budget_s: float = field(default_factory=lambda: _f("GEORISK_PROVIDER_BUDGET_S", 20.0))  # then fail over, never keep retrying
     retry_attempts: int = field(default_factory=lambda: int(_f("GEORISK_RETRY_ATTEMPTS", 3)))
     providers: tuple[str, ...] = field(
         default_factory=lambda: tuple(

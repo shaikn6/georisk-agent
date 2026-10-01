@@ -26,7 +26,7 @@ from .resultcache import cached_assess as assess
 from .synthetic import ARCHETYPES
 
 log = logging.getLogger(__name__)
-app = FastAPI(title="georisk-agent", version="0.3.0")
+app = FastAPI(title="georisk-agent", version="0.4.0")
 _POOL = ThreadPoolExecutor(max_workers=4)
 # Bound total concurrent imagery work: a burst of large requests must degrade to 429, not exhaust the host.
 _SLOTS = threading.BoundedSemaphore(int(os.environ.get("GEORISK_MAX_INFLIGHT", "8")))
