@@ -11,8 +11,8 @@ from pyproj import Geod
 from shapely.geometry import box, mapping, shape
 from shapely.geometry.base import BaseGeometry
 
-from .agent import assess
 from .providers.chain import AllProvidersFailed
+from .resultcache import cached_assess as assess
 
 log = logging.getLogger(__name__)
 _GEOD = Geod(ellps="WGS84")

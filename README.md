@@ -275,7 +275,26 @@ So there is no "unusual site" warning; the evidence table above is the uncertain
 ![GeoRisk demo: calibrated probabilities with the factors that drive them](docs/demo-drivers.png)
 
 ![Area mode: flood probability per 1 km tile along the Scioto River, Columbus](docs/demo-area.png)
-- 180 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
+- 188 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
+
+## Operations
+
+| Variable | Default | What it does |
+|---|---|---|
+| `GEORISK_API_KEY` | unset | If set, `/assess`, `/assess/area`, `/assess/batch` and `/metrics` require `X-API-Key` |
+| `GEORISK_RATE_PER_MIN` | 20 | Per-client sliding-window limit (batch and area are charged per item/tile); per instance on serverless |
+| `GEORISK_MAX_INFLIGHT` | 8 (4 on Vercel) | Concurrent assessments before requests get a clean 429 |
+| `GEORISK_MAX_AREA_TILES` | 16 | Largest area job; larger outlines get a 422 asking for bigger tiles |
+| `GEORISK_RESULT_TTL_S` | 1800 | How long a finished assessment is reused (bounded LRU, 256 places; failures are never cached) |
+| `GEORISK_TRUST_PROXY` | 0 (1 on Vercel) | Honour `X-Forwarded-For` for client identity (only behind a proxy you control) |
+| `GEORISK_ALLOW_LLM` / `ANTHROPIC_API_KEY` | off | Optional LLM rewrite of the memo, accepted only if every number it writes is in the facts |
+| `GEORISK_PROVIDERS`, `GEORISK_CACHE_DIR`, `GEORISK_CACHE_TTL_S`, `GEORISK_ALLOW_SYNTHETIC` | see `config.py` | Imagery provider order, disk scene cache, opt-in synthetic last resort |
+
+- **Health:** `/health` (liveness, never touches external services) and `/health/deep` (probes each imagery provider and reports circuit state).
+- **Metrics:** `/metrics` in Prometheus text format: request counts and latency histograms by route template and status class, plus result-cache hits and misses. Labels are bounded; no coordinates or IPs ever appear in logs or metrics.
+- **Load test:** `python scripts/loadtest.py http://localhost:8765 --requests 400 --threads 32` drives synthetic scenes plus bad input and fails if it sees any 5xx.
+  A local run of 400 requests at 32 threads gave 0 server errors, overload shed as clean 429s, bad input as 422s, and p50 59 ms / p95 69 ms on the offline path.
+- **Latency:** a new place takes about 2-6 s (imagery and the 6 km DEM window are fetched in parallel); repeating it is served from cache in about 2 ms.
 
 ## Deploying (Vercel)
 
