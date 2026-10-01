@@ -270,7 +270,7 @@ So there is no "unusual site" warning; the evidence table above is the uncertain
 ![GeoRisk demo: calibrated probabilities with the factors that drive them](docs/demo-drivers.png)
 
 ![Area mode: flood probability per 1 km tile along the Scioto River, Columbus](docs/demo-area.png)
-- 147 offline tests (fault injection, API security, rate limiting, metrics, calibration, model round-trips) + live smoke tests.
+- 177 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
 
 ## Deploying (Vercel)
 

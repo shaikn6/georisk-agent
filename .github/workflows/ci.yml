@@ -12,9 +12,9 @@ jobs:
       - uses: actions/setup-python@v7
         with: { python-version: "${{ matrix.python }}" }
       - run: pip install -e ".[dev]"
-      - run: ruff check src tests
+      - run: ruff check src tests app.py
       - name: Offline tests
-        run: pytest -q -m "not network"
+        run: pytest -q -m "not network" --cov=georisk --cov-report=term-missing:skip-covered --cov-fail-under=80
       - name: Live Sentinel-2 smoke test
         run: pytest -q -m network
         continue-on-error: true   # depends on a public API being reachable
