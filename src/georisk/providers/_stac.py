@@ -22,7 +22,7 @@ class StacProvider:
     scl_asset = "scl"
 
     def _client(self) -> Client:
-        return Client.open(self.url, timeout=20)
+        return Client.open(self.url, timeout=12)  # a healthy catalog answers in 1-3 s; fail fast and fail over
 
     def probe(self) -> None:
         try:

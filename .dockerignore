@@ -1,5 +1,11 @@
-.venv
 .git
+.venv
 __pycache__
-.georisk_cache
+*.pyc
 tests
+validation_data
+.georisk_cache
+.coverage
+HANDOFF.md
+docs
+scripts

@@ -17,4 +17,4 @@ class PlanetaryComputerProvider(StacProvider):
     scl_asset = "SCL"
 
     def _client(self) -> Client:
-        return Client.open(self.url, modifier=planetary_computer.sign_inplace, timeout=20)
+        return Client.open(self.url, modifier=planetary_computer.sign_inplace, timeout=12)
