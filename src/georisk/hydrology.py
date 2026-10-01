@@ -129,6 +129,7 @@ class TopoFeatures:
     tpi_m: float            # AOI mean minus the whole window's mean: +ve = ridge/upland, -ve = valley
     roughness_m: float      # standard deviation of AOI elevation
     south_exposure: float   # -1 (north-facing) .. +1 (south-facing), slope-weighted; south-facing slopes are hotter and drier
+    flat_fraction: float    # share of the AOI with slope under 3 degrees (buildable for arrays, plants, depots)
 
 
 def topo_features(dem: np.ndarray, cell_m: float, aoi_slice: tuple[slice, slice]) -> TopoFeatures:
@@ -140,4 +141,5 @@ def topo_features(dem: np.ndarray, cell_m: float, aoi_slice: tuple[slice, slice]
     gy, gx = np.gradient(dem, cell_m)  # dz per metre along rows (southward) and columns (eastward)
     mag = np.hypot(gx, gy)[aoi_slice]
     south = float((-gy[aoi_slice]).sum() / (mag.sum() + 1e-9))  # downslope direction pointing south = south-facing
-    return TopoFeatures(float(aoi.mean()), float(aoi.mean() - dem.mean()), float(aoi.std()), float(np.clip(south, -1.0, 1.0)))
+    flat = float((np.degrees(np.arctan(mag)) < 3.0).mean())
+    return TopoFeatures(float(aoi.mean()), float(aoi.mean() - dem.mean()), float(aoi.std()), float(np.clip(south, -1.0, 1.0)), flat)

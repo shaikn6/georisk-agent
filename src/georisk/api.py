@@ -196,7 +196,7 @@ _CSP = ("default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def demo() -> HTMLResponse:
     html = resources.files("georisk").joinpath("web/index.html").read_text()
-    return HTMLResponse(html, headers={"Content-Security-Policy": _CSP, "X-Content-Type-Options": "nosniff",
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache", "Content-Security-Policy": _CSP,  # revalidate: a deploy must not leave users on a stale page "X-Content-Type-Options": "nosniff",
                                        "Referrer-Policy": "no-referrer"})
 
 

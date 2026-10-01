@@ -34,12 +34,17 @@ def load_artifact() -> dict:
         return {}
 
 
-def _vector(spec: dict, features: Features, terrain: TerrainFeatures, hydro=None, topo=None) -> np.ndarray:
-    row = {**asdict(features), **{f"t_{k}": v for k, v in asdict(terrain).items()}}
+IMAGERY = frozenset(Features.__dataclass_fields__)  # inputs that need a satellite scene
+
+
+def _vector(spec: dict, features: Features | None, terrain: TerrainFeatures, hydro=None, topo=None, grid=None) -> np.ndarray:
+    row = {**(asdict(features) if features is not None else {}), **{f"t_{k}": v for k, v in asdict(terrain).items()}}
     if hydro is not None:
         row |= {f"h_{k}": v for k, v in asdict(hydro).items()}  # absent hydrology falls back to the training median via `fill`
     if topo is not None:
         row |= {f"o_{k}": v for k, v in asdict(topo).items()}
+    if grid is not None:
+        row |= {f"g_{k}": v for k, v in asdict(grid).items()}
     out = []
     for c in spec["features"]:
         v = row.get(c)
@@ -53,12 +58,14 @@ LABELS = {
     "veg_mean_nbr": ("Vegetation dryness (NBR)", ""), "t_mean_slope_deg": ("Mean slope", "deg"), "t_p90_slope_deg": ("Steep-slope extent", "deg"),
     "t_relief_m": ("Local relief", "m"), "t_center_percentile": ("Elevation vs surroundings", "%"), "t_low_lying_fraction": ("Low-lying ground", "%"),
     "o_elev_mean_m": ("Elevation", "m"), "o_tpi_m": ("Ridge (+) or valley (-) position", "m"), "o_roughness_m": ("Ground roughness", "m"),
-    "o_south_exposure": ("South-facing slope (+1) vs north (-1)", ""),
+    "g_dist_km": ("Distance to a 100 kV+ power line", "km"), "g_dist_230_km": ("Distance to a 230 kV+ power line", "km"),
+    "g_n_lines_10km": ("Power lines within 10 km", ""), "g_max_kv_10km": ("Highest line voltage within 10 km", "kV"),
+    "o_south_exposure": ("South-facing slope (+1) vs north (-1)", ""), "o_flat_fraction": ("Flat ground (under 3 degrees)", "%"),
     "h_hand_mean_m": ("Height above nearest stream", "m"), "h_hand_min_m": ("Lowest point above stream", "m"),
     "h_near_stream_fraction": ("Ground within 3 m of a stream", "%"), "h_dist_to_stream_m": ("Distance to nearest stream", "m"),
     "h_log_stream_area": ("Size of the stream it drains to (log km2)", ""), "h_hand_big_mean_m": ("Height above large rivers", "m"),
 }
-_PERCENT = {"water_fraction", "built_fraction", "dry_fuel_fraction", "veg_fraction", "t_center_percentile", "t_low_lying_fraction", "h_near_stream_fraction"}
+_PERCENT = {"o_flat_fraction", "water_fraction", "built_fraction", "dry_fuel_fraction", "veg_fraction", "t_center_percentile", "t_low_lying_fraction", "h_near_stream_fraction"}
 
 
 # Correlated features are occluded together: one at a time they produce offsetting, misleading effects.
@@ -67,7 +74,10 @@ GROUPS = {
     "Low-lying position": ("t_center_percentile", "t_low_lying_fraction"),
     "Height above streams": ("h_hand_mean_m", "h_hand_min_m", "h_hand_big_mean_m", "h_near_stream_fraction"),
     "Stream proximity and size": ("h_dist_to_stream_m", "h_log_stream_area"),
+    "Grid proximity": ("g_dist_km", "g_dist_230_km"),
+    "Grid strength nearby": ("g_n_lines_10km", "g_max_kv_10km"),
     "Fuel dryness": ("dry_fuel_fraction", "veg_mean_nbr", "mean_nbr"),
+    "Ground relief": ("t_relief_m", "o_roughness_m"),
 }
 
 
@@ -121,14 +131,14 @@ def explain(model, spec: dict, x: np.ndarray, top: int = 5) -> list[dict]:
 
 
 def outside_domain(lat: float, lon: float, artifact: dict | None = None) -> list[str]:
-    """Tasks that have a fitted model whose training region does not contain (lat, lon)."""
+    """Hazard tasks whose fitted model's training region does not contain (lat, lon). (Opportunities have no heuristic to warn about.)"""
     art = load_artifact() if artifact is None else artifact
     return [t for t, spec in art.items()
-            if (d := spec.get("domain")) and not (d[0] <= lat <= d[1] and d[2] <= lon <= d[3])]
+            if spec.get("kind", "hazard") == "hazard" and (d := spec.get("domain")) and not (d[0] <= lat <= d[1] and d[2] <= lon <= d[3])]
 
 
-def calibrated_probabilities(features: Features, terrain: TerrainFeatures | None, artifact: dict | None = None,
-                             lat: float | None = None, lon: float | None = None, hydro=None, topo=None) -> dict:
+def calibrated_probabilities(features: Features | None, terrain: TerrainFeatures | None, artifact: dict | None = None,
+                             lat: float | None = None, lon: float | None = None, hydro=None, topo=None, grid=None) -> dict:
     """{task: {"probability": p, "meaning": str}} for every task with a shipped model. Needs terrain; skips
     tasks whose training domain does not contain (lat, lon)."""
     art = load_artifact() if artifact is None else artifact
@@ -136,15 +146,20 @@ def calibrated_probabilities(features: Features, terrain: TerrainFeatures | None
         return {}
     out = {}
     for task, spec in art.items():
+        if features is None and IMAGERY & set(spec["features"]):
+            continue  # this model needs imagery and there is none: say nothing rather than guess
+        if grid is None and any(c.startswith("g_") for c in spec["features"]):
+            continue  # grid distance is THE key input: a median would be a made-up answer, so say nothing instead
         d = spec.get("domain")
         if d and lat is not None and lon is not None and not (d[0] <= lat <= d[1] and d[2] <= lon <= d[3]):
             continue  # outside the validated region: no probability beats a made-up one
         try:
             model = Recalibrated(load_model(spec["model"]), spec.get("calibrator"))  # undoes the squeeze toward 0.5
-            x = _vector(spec, features, terrain, hydro, topo)
+            x = _vector(spec, features, terrain, hydro, topo, grid)
             p = float(model.predict_proba(x)[0])
             out[task] = {"probability": round(p, 3), "meaning": spec["meaning"], "drivers": explain(model, spec, x),
-                         "evidence": similar_sites(spec, p)}
+                         "evidence": similar_sites(spec, p), "kind": spec.get("kind", "hazard"),
+                         "caveat": spec.get("caveat")}
         except Exception as exc:  # noqa: BLE001
             log.warning("calibrated %s probability failed: %s", task, exc)
     return out

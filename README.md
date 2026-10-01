@@ -275,7 +275,50 @@ So there is no "unusual site" warning; the evidence table above is the uncertain
 ![GeoRisk demo: calibrated probabilities with the factors that drive them](docs/demo-drivers.png)
 
 ![Area mode: flood probability per 1 km tile along the Scioto River, Columbus](docs/demo-area.png)
-- 192 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
+- 213 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
+
+## Energy lens: solar siting (experimental)
+
+GeoRisk's energy lens asks "how much does this site's terrain and grid access resemble where US utility-scale solar is actually built?".
+Labels are the **USGS/Berkeley Lab US Large-Scale Solar Photovoltaic Database** (v4.0, April 2026; 6,611 plants of 1 MW or more, 67 in Ohio).
+Positives are 1500 plant locations; negatives are an equal number of *nearby* sites (3-25 km away, never within 2 km of any plant), so the
+model has to separate solar land from its neighbours rather than learn "sunny state". Only elevation-derived features (slope, flat share, aspect, ridge/valley position,
+river height) and **distance to the high-voltage grid** (HIFLD transmission lines of 100 kV or more: nearest line, nearest 230 kV+ line, lines within 10 km, highest voltage nearby) are used.
+Satellite imagery is deliberately excluded because the panels themselves would leak the label. Everything is held out **by state**.
+
+| Model (leave-state-out, 3000 sites) | AUC | 95% CI | Brier (baseline 0.250) |
+|---|---|---|---|
+| logistic | 0.673 | 0.66–0.69 | 0.226 |
+| forest | 0.664 | 0.65–0.68 | 0.231 |
+| knn | 0.623 | 0.60–0.64 | 0.248 |
+| ensemble | 0.670 | 0.65–0.69 | 0.227 |
+| sk_forest | 0.673 | 0.65–0.69 | 0.231 |
+| blend | 0.682 | 0.67–0.70 | 0.226 |
+
+Terrain alone gave AUC 0.625; adding grid proximity lifted every model (served blend: **0.682**, 0.67-0.70).
+Track record of the shown probability on held-out states:
+
+| Predicted band | Sites | Real solar sites | 95% range |
+|---|---|---|---|
+| 0–20% | 167 | 13% | 9–19% |
+| 20–30% | 267 | 27% | 22–33% |
+| 30–40% | 382 | 34% | 30–39% |
+| 40–50% | 521 | 48% | 43–52% |
+| 50–60% | 681 | 58% | 54–62% |
+| 60–70% | 721 | 61% | 58–65% |
+| 70–100% | 261 | 73% | 68–78% |
+
+**This is a rough screen, and it is weakest exactly where you might use it first.**
+- Nationally the skill is modest. In flat farmland states it is close to chance: Ohio held-out AUC 0.63 on only 26 sites, and a spot check of 10 real Ohio plants (not used in training)
+  found the plant scored higher than ordinary land 6 km away in 5 of 10 pairs (average 53% vs 50%).
+- Why: in flat farmland a solar field and its neighbours look the same to terrain and grid distance. What decides siting there is parcel size, land use, substation capacity, zoning and economics, none of which are in this free pipeline.
+- Weakest states in testing: MS (0.22), LA (0.33), MO (0.50), ID (0.56).
+- The caveat is stored in the model artifact, so the API, the memo and the demo always show it next to the number ("experimental").
+
+### When imagery is unavailable
+
+Each result is delivered when its own inputs exist. If no clear satellite scene can be found (for example 60 days of cloud), flood and wildfire need imagery and are withheld, but the
+solar lens (elevation and grid only) is still returned, with a warning saying what is missing. Only when nothing at all can be computed does the API return 503. If the grid service is down, solar is withheld rather than guessed from a median.
 
 ## Operations
 

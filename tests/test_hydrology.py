@@ -102,3 +102,10 @@ def test_topo_features_report_elevation_and_roughness_and_reject_bad_dems():
     bad[3, 3] = np.inf
     with pytest.raises(ValueError):
         hy.topo_features(bad, 30.0, (slice(5, 15), slice(5, 15)))
+
+
+def test_flat_fraction_is_one_on_a_plain_and_zero_on_a_steep_face():
+    assert hy.topo_features(plane(), 30.0, AOI).flat_fraction == 1.0
+    assert hy.topo_features(plane(drop_per_row=-30.0), 30.0, AOI).flat_fraction == 0.0  # 45 degree slope
+    gentle = hy.topo_features(plane(drop_per_row=-1.0), 30.0, AOI).flat_fraction  # ~1.9 degrees
+    assert gentle == 1.0

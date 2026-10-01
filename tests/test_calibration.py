@@ -186,3 +186,43 @@ def test_memo_cites_the_track_record_with_numbers_that_pass_the_guardrail():
     text = analyst.template_memo(f)
     assert "70% of 150 held-out sites" in text and "95% range 62-77%" in text
     assert analyst.verify_numbers(text, f)  # the memo's own numbers all come from the facts
+
+
+def test_opportunities_do_not_trigger_the_unvalidated_heuristic_warning():
+    from georisk.calibration import outside_domain
+
+    art = {"fire": {"kind": "hazard", "domain": [32.0, 49.0, -124.0, -104.0]},
+           "solar": {"kind": "opportunity", "domain": [32.0, 49.0, -124.0, -104.0]}}
+    assert outside_domain(39.96, -83.0, art) == ["fire"]  # solar has no heuristic score to call unvalidated
+
+
+def test_calibrated_output_carries_the_kind_so_the_ui_and_memo_can_treat_it_differently():
+    spec = fake_artifact()["flood"] | {"kind": "opportunity"}
+    out = calibrated_probabilities(extract_features(make_scene("floodplain")), T, {"flood": spec})
+    assert out["flood"]["kind"] == "opportunity"
+    assert calibrated_probabilities(extract_features(make_scene("floodplain")), T, fake_artifact())["flood"]["kind"] == "hazard"  # default
+
+
+def test_solar_is_withheld_without_grid_data_instead_of_guessing_a_median():
+    from georisk.grid import GridFeatures
+
+    spec = fake_artifact()["flood"] | {"kind": "opportunity", "features": ["water_fraction", "g_dist_km"],
+                                         "fill": {"water_fraction": 0.2, "g_dist_km": 12.0}}
+    # model trained on a column order that includes the grid feature
+    rng = np.random.default_rng(9)
+    X = rng.random((200, 2))
+    y = (X[:, 1] < 0.5).astype(int)
+    from georisk.validation.metrics import Logistic
+
+    spec["model"] = Logistic(1.0).fit(X, y).to_dict()
+    f = extract_features(make_scene("floodplain"))
+    assert calibrated_probabilities(f, T, {"solar": spec}) == {}  # no grid -> no probability
+    out = calibrated_probabilities(f, T, {"solar": spec}, grid=GridFeatures(0.3, 0.3, 4.0, 345.0))
+    assert out["solar"]["kind"] == "opportunity" and 0 <= out["solar"]["probability"] <= 1
+
+
+def test_the_experimental_caveat_travels_with_the_probability():
+    spec = fake_artifact()["flood"] | {"kind": "opportunity", "caveat": "Experimental: rough screen."}
+    out = calibrated_probabilities(extract_features(make_scene("floodplain")), T, {"flood": spec})
+    assert out["flood"]["caveat"] == "Experimental: rough screen."
+    assert calibrated_probabilities(extract_features(make_scene("floodplain")), T, fake_artifact())["flood"]["caveat"] is None
