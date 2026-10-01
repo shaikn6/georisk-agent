@@ -131,6 +131,7 @@ class KNN:
         return m
 
 
+ZMAX = 2.0  # held-out tuning (z-clip 2.0 beat 3.0 and uncapped): AUC +0.008, Brier -0.003
 MEMBERS = {"logistic": Logistic, "forest": Forest, "sk_forest": SkForest, "knn": KNN}
 
 
@@ -140,7 +141,7 @@ class Ensemble:
         self.models: dict = {}
 
     def fit(self, X, y) -> Ensemble:
-        self.models = {n: (Logistic(self.l2) if n == "logistic" else MEMBERS[n]()).fit(X, y) for n in self.names}
+        self.models = {n: (Logistic(self.l2, zmax=ZMAX) if n == "logistic" else MEMBERS[n]()).fit(X, y) for n in self.names}
         return self
 
     def member_probas(self, X) -> dict[str, np.ndarray]:

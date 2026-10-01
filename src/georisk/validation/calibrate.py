@@ -18,7 +18,7 @@ from ..hazards.wildfire import WildfireHazard
 from ..scoring import Features
 from ..terrain import TerrainFeatures
 from .dataset import OHIO
-from .ensemble import KNN, Ensemble, Forest, SkForest, dump_model
+from .ensemble import KNN, ZMAX, Ensemble, Forest, SkForest, dump_model
 from .metrics import (
     Logistic,
     auc,
@@ -36,7 +36,10 @@ TASKS = {
     "flood": {
         "hazard": FloodHazard,
         "features": ["water_fraction", "built_fraction", "mean_ndvi", "t_mean_slope_deg", "t_p90_slope_deg",
-                     "t_relief_m", "t_center_percentile", "t_low_lying_fraction"],
+                     "t_relief_m", "t_center_percentile", "t_low_lying_fraction",
+                     # height above the nearest stream (hydrology.py): +0.012 AUC, Ohio holdout +0.03..0.05
+                     "h_hand_mean_m", "h_hand_min_m", "h_near_stream_fraction", "h_dist_to_stream_m", "h_log_stream_area",
+                     "h_hand_big_mean_m"],
         "meaning": "P(site lies in a FEMA Special Flood Hazard Area)",
     },
     "fire": {
@@ -73,6 +76,15 @@ def load_rows(*paths: Path) -> list[dict]:
             if r and (r["lat"], r["lon"]) not in seen:  # the same point sampled twice must not leak across folds
                 seen.add((r["lat"], r["lon"]))
                 rows.append(r)
+    hydro = {}
+    hp = Path("validation_data/hydro.jsonl")
+    if hp.exists():  # river-height features computed separately (validation.hydro_collect), joined by coordinates
+        for line in hp.read_text().splitlines():
+            h = json.loads(line) if line.strip() else None
+            if h and "hydro_error" not in h:
+                hydro[(h["lat"], h["lon"])] = {k: v for k, v in h.items() if k.startswith("h_")}
+    for r in rows:
+        r.update(hydro.get((r["lat"], r["lon"]), {}))
     keep = [r for r in rows if "terrain_error" not in r and r.get("valid_fraction", 0) >= 0.5 and "t_relief_m" in r]
     return keep
 
@@ -115,7 +127,7 @@ def evaluate(task: str, *paths: Path) -> dict:
     cv = cross_validate(X, y, k=5, l2=L2)  # optimistic: neighbours leak between folds (reported, not gated)
     lg = leave_group_out(X, y, [r["region"] for r in rows], l2=L2)  # the honest test: unseen regions
     groups = np.array([r["region"] for r in rows])
-    members = {"logistic": lambda: Logistic(L2), "forest": Forest, "knn": KNN, "ensemble": lambda: Ensemble(L2)}
+    members = {"logistic": lambda: Logistic(L2, zmax=ZMAX), "forest": Forest, "knn": KNN, "ensemble": lambda: Ensemble(L2)}
     if _HAS_SKLEARN:  # research extra: trees are trained with scikit-learn, then served as plain numpy
         members |= {"sk_forest": SkForest, "blend": lambda: Ensemble(L2, ("logistic", "sk_forest"))}
     lro = {name: _lro(mk, X, y, groups) for name, mk in members.items()}

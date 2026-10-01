@@ -12,104 +12,104 @@
       ]
     },
     "model_random_kfold": {
-      "auc": 0.838,
+      "auc": 0.871,
       "auc_ci95": [
-        0.807,
-        0.865
+        0.848,
+        0.893
       ],
-      "brier": 0.1649,
+      "brier": 0.1463,
       "brier_baseline": 0.2499
     },
     "leave_region_out_by_model": {
       "logistic": {
-        "auc": 0.829,
+        "auc": 0.859,
         "auc_ci95": [
-          0.797,
-          0.858
+          0.836,
+          0.883
         ],
-        "brier": 0.169,
+        "brier": 0.1521,
         "brier_baseline": 0.2499
       },
       "forest": {
-        "auc": 0.806,
+        "auc": 0.821,
         "auc_ci95": [
-          0.777,
-          0.834
+          0.794,
+          0.846
         ],
-        "brier": 0.1891,
+        "brier": 0.1777,
         "brier_baseline": 0.2499
       },
       "knn": {
-        "auc": 0.786,
+        "auc": 0.8,
         "auc_ci95": [
-          0.754,
-          0.816
+          0.771,
+          0.829
         ],
-        "brier": 0.1948,
+        "brier": 0.1865,
         "brier_baseline": 0.2499
       },
       "ensemble": {
-        "auc": 0.828,
+        "auc": 0.85,
         "auc_ci95": [
-          0.797,
-          0.853
+          0.826,
+          0.873
         ],
-        "brier": 0.1733,
+        "brier": 0.1593,
         "brier_baseline": 0.2499
       },
       "sk_forest": {
-        "auc": 0.829,
+        "auc": 0.852,
         "auc_ci95": [
-          0.802,
-          0.853
+          0.825,
+          0.876
         ],
-        "brier": 0.1903,
+        "brier": 0.1826,
         "brier_baseline": 0.2499
       },
       "blend": {
-        "auc": 0.844,
+        "auc": 0.866,
         "auc_ci95": [
-          0.813,
-          0.87
+          0.841,
+          0.888
         ],
-        "brier": 0.1717,
+        "brier": 0.158,
         "brier_baseline": 0.2499
       }
     },
     "model_leave_region_out": {
-      "auc": 0.844,
+      "auc": 0.866,
       "auc_ci95": [
-        0.813,
-        0.87
+        0.841,
+        0.888
       ],
-      "brier": 0.1717,
+      "brier": 0.158,
       "brier_baseline": 0.2499,
       "per_region_auc": {
-        "akron": 0.82,
-        "cedar_rapids": 0.86,
-        "charleston": 0.93,
-        "cincinnati": 0.9,
-        "cleveland": 0.94,
-        "columbus": 0.95,
-        "dallas": 0.74,
-        "dayton": 0.87,
+        "akron": 0.91,
+        "cedar_rapids": 0.92,
+        "charleston": 0.95,
+        "cincinnati": 0.97,
+        "cleveland": 0.82,
+        "columbus": 0.98,
+        "dallas": 0.91,
+        "dayton": 0.92,
         "houston": 0.78,
-        "miami": 0.57,
-        "nashville": 0.9,
-        "new_orleans": 0.57,
-        "pittsburgh": 1.0,
-        "sacramento": 0.78,
-        "st_louis": 0.7,
-        "toledo": 0.65
+        "miami": 0.68,
+        "nashville": 0.92,
+        "new_orleans": 0.61,
+        "pittsburgh": 0.99,
+        "sacramento": 0.79,
+        "st_louis": 0.86,
+        "toledo": 0.59
       }
     },
     "served_model": "blend",
     "recalibration": {
-      "ece_before": 0.0994,
-      "ece_after": 0.021,
-      "brier_before": 0.1717,
-      "brier_after": 0.1628,
-      "auc_after": 0.836,
+      "ece_before": 0.091,
+      "ece_after": 0.0347,
+      "brier_before": 0.158,
+      "brier_after": 0.1517,
+      "auc_after": 0.858,
       "shipped": true
     },
     "ohio_holdout": {
@@ -117,57 +117,57 @@
       "trained_on": "all non-Ohio regions",
       "by_model": {
         "logistic": {
-          "auc": 0.803,
+          "auc": 0.851,
           "auc_ci95": [
-            0.745,
-            0.851
+            0.801,
+            0.894
           ],
-          "brier": 0.1931,
+          "brier": 0.1771,
           "brier_baseline": 0.2721
         },
         "forest": {
-          "auc": 0.727,
+          "auc": 0.764,
           "auc_ci95": [
-            0.659,
-            0.777
+            0.704,
+            0.815
           ],
-          "brier": 0.2069,
+          "brier": 0.203,
           "brier_baseline": 0.2721
         },
         "knn": {
-          "auc": 0.732,
+          "auc": 0.768,
           "auc_ci95": [
-            0.663,
-            0.789
+            0.711,
+            0.817
           ],
-          "brier": 0.2047,
+          "brier": 0.215,
           "brier_baseline": 0.2721
         },
         "ensemble": {
-          "auc": 0.78,
+          "auc": 0.833,
           "auc_ci95": [
-            0.718,
-            0.83
+            0.783,
+            0.878
           ],
-          "brier": 0.192,
+          "brier": 0.1845,
           "brier_baseline": 0.2721
         },
         "sk_forest": {
-          "auc": 0.818,
+          "auc": 0.841,
           "auc_ci95": [
-            0.759,
-            0.86
+            0.791,
+            0.885
           ],
-          "brier": 0.1959,
+          "brier": 0.1989,
           "brier_baseline": 0.2721
         },
         "blend": {
-          "auc": 0.821,
+          "auc": 0.856,
           "auc_ci95": [
-            0.768,
-            0.867
+            0.807,
+            0.9
           ],
-          "brier": 0.1904,
+          "brier": 0.1804,
           "brier_baseline": 0.2721
         }
       },
@@ -203,12 +203,12 @@
     },
     "leave_region_out_by_model": {
       "logistic": {
-        "auc": 0.742,
+        "auc": 0.743,
         "auc_ci95": [
-          0.685,
-          0.8
+          0.686,
+          0.802
         ],
-        "brier": 0.2018,
+        "brier": 0.2027,
         "brier_baseline": 0.2499
       },
       "forest": {
@@ -230,12 +230,12 @@
         "brier_baseline": 0.2499
       },
       "ensemble": {
-        "auc": 0.763,
+        "auc": 0.764,
         "auc_ci95": [
-          0.707,
-          0.817
+          0.708,
+          0.818
         ],
-        "brier": 0.1932,
+        "brier": 0.1936,
         "brier_baseline": 0.2499
       },
       "sk_forest": {
@@ -248,12 +248,12 @@
         "brier_baseline": 0.2499
       },
       "blend": {
-        "auc": 0.774,
+        "auc": 0.775,
         "auc_ci95": [
           0.721,
-          0.828
+          0.829
         ],
-        "brier": 0.193,
+        "brier": 0.1941,
         "brier_baseline": 0.2499
       }
     },
