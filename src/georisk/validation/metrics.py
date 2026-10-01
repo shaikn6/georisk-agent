@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 import numpy as np
 
 
@@ -137,7 +139,7 @@ def ece(y: np.ndarray, p: np.ndarray, edges=(0, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 1.
     """Expected calibration error: bin-weighted gap between predicted probability and observed frequency."""
     y, p = np.asarray(y, float), np.asarray(p, float)
     tot = 0.0
-    for lo, hi in zip(edges[:-1], edges[1:], strict=True):
+    for lo, hi in pairwise(edges):
         m = (p >= lo) & (p < hi)
         if m.any():
             tot += m.sum() / len(y) * abs(p[m].mean() - y[m].mean())
