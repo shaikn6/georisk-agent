@@ -190,7 +190,7 @@ _CSP = ("default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare
         "style-src 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
         "font-src https://fonts.gstatic.com; "
         "img-src 'self' data: https://services.arcgisonline.com https://cdnjs.cloudflare.com; "
-        "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+        "connect-src 'self' https://nominatim.openstreetmap.org; base-uri 'none'; frame-ancestors 'none'")
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
