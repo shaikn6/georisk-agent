@@ -144,3 +144,8 @@ def test_unhandled_exception_is_logged_with_type_but_response_stays_generic(monk
         r = quiet.post("/assess", json=OK)
     assert r.status_code == 500 and "provider blew up" not in r.text
     assert "unhandled_exception" in caplog.text and "RuntimeError" in caplog.text
+
+
+def test_metrics_expose_result_cache_counters():
+    text = client.get("/metrics").text
+    assert 'georisk_result_cache_total{outcome="hit"}' in text and 'georisk_result_cache_total{outcome="miss"}' in text

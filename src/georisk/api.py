@@ -18,9 +18,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from .agent import assess, default_chain
+from .agent import default_chain
 from .area import AreaError, assess_area, parse_geometry, plan_tiles
 from .providers.chain import AllProvidersFailed
+from .resultcache import CACHE
+from .resultcache import cached_assess as assess
 from .synthetic import ARCHETYPES
 
 log = logging.getLogger(__name__)
@@ -251,7 +253,9 @@ async def observe(request: Request, call_next):
 @app.get("/metrics", response_class=PlainTextResponse, dependencies=[Depends(require_key)], include_in_schema=False)
 def metrics() -> str:
     """Prometheus text format: request counts by route/status class and latency histograms."""
-    lines = ["# TYPE georisk_requests_total counter"]
+    lines = ["# TYPE georisk_result_cache_total counter",
+             f'georisk_result_cache_total{{outcome="hit"}} {CACHE.hits}', f'georisk_result_cache_total{{outcome="miss"}} {CACHE.misses}',
+             "# TYPE georisk_requests_total counter"]
     with _METRICS_LOCK:
         lines += [f'georisk_requests_total{{route="{r}",status_class="{c}"}} {n}' for (r, c), n in sorted(_REQS.items())]
         lines.append("# TYPE georisk_request_duration_seconds histogram")
