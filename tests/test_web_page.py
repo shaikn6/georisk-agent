@@ -41,3 +41,9 @@ for (const [i, want] of cases) { const got = safeCell(i); if (got !== want) { co
 '''
     r = subprocess.run(["node", "-e", js], capture_output=True, text=True, timeout=20, check=False)
     assert r.returncode == 0, r.stderr
+
+
+def test_the_page_is_revalidated_so_a_deploy_never_leaves_users_on_a_stale_copy():
+    r = TestClient(api.app).get("/")
+    assert r.headers["cache-control"] == "no-cache"
+    assert 'id="q"' in r.text  # and it is the current page

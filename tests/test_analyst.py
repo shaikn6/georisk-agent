@@ -62,3 +62,30 @@ def test_llm_errors_never_break_the_memo(monkeypatch):
 def test_acronyms_keep_their_case_in_driver_names():
     cal = {"flood": {"probability": 0.3, "meaning": "m", "drivers": [{"label": "Vegetation greenness (NDVI)", "effect_pp": 2.8}]}}
     assert "vegetation greenness (NDVI) raises it by 2.8 points" in analyst.template_memo(facts(cal))
+
+
+SOLAR = {"probability": 0.72, "meaning": "m", "kind": "opportunity",
+         "drivers": [{"label": "Flat ground (under 3 degrees)", "effect_pp": 18.4}, {"label": "Height above nearest stream", "effect_pp": -4.0}],
+         "evidence": {"n": 210, "observed_pct": 74, "ci95_pct": [68, 80], "band_pct": [70, 80]},
+         "caveat": "Experimental: held-out AUC 0.68 across states, but 0.63 in Ohio (only 26 test sites). Treat it as a rough screen."}
+
+
+def test_memo_gives_solar_its_own_energy_paragraph_without_hazard_advice():
+    f = analyst.build_facts({**CAL, "solar": SOLAR}, overall=30.0, overall_level="moderate", confidence="high", acquired=None,
+                            cloud_cover=None, warnings=[], source="x")
+    assert set(f["hazards"]) == {"flood", "fire"} and set(f["opportunities"]) == {"solar"}  # solar is not mixed into the hazards
+    t = analyst.template_memo(f)
+    assert "Energy lens: terrain similarity for solar siting is 72%" in t
+    assert "flat ground (under 3 degrees) helps by 18.4 points" in t and "height above nearest stream hurts by 4 points" in t
+    assert "74% of 210 sites scored 70-80% were real solar-plant sites" in t
+    assert "irradiance, land price and permitting are not assessed" in t  # says what it does NOT assess (grid distance IS used)
+    assert "Experimental: held-out AUC 0.68 across states, but 0.63 in Ohio (only 26 test sites)" in t  # the weakness is stated, not buried
+    assert t.count("at or above 50%") == 1  # the "confirm with an official determination" advice is about hazards only
+    assert analyst.verify_numbers(t, f)
+
+
+def test_a_site_with_only_an_opportunity_still_gets_a_clear_memo():
+    f = analyst.build_facts({"solar": SOLAR}, overall=None, overall_level="unknown", confidence="high", acquired=None,
+                            cloud_cover=None, warnings=[], source="x")
+    t = analyst.template_memo(f)
+    assert t.startswith("Energy lens") and "not a site assessment" in t and "Screening result" not in t

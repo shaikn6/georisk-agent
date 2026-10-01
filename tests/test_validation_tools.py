@@ -193,3 +193,55 @@ def test_hydro_collect_points_dedupe_and_failures_are_recorded(tmp_path, monkeyp
         raise TerrainUnavailable("no dem")
     monkeypatch.setattr(hydro_collect, "load_hydrology", down)
     assert hydro_collect.one((1.0, 2.0))["hydro_error"] == "no dem"
+
+
+def test_solar_negatives_are_nearby_but_never_on_or_beside_a_plant():
+    import numpy as np
+
+    from georisk.validation import solar
+
+    plants = [{"lat": 35.0 + 0.3 * i, "lon": -100.0 + 0.3 * i, "state": "TX" if i % 2 else "OK", "mw": 5.0, "year": "2020"} for i in range(40)]
+    pts = solar.sample_points(plants, 30, seed=2)
+    assert sum(p["label"] for p in pts) == 30 and 24 <= len(pts) - 30 <= 30  # one negative per plant (a few may fail the exclusion test)
+    lats, lons = np.array([p["lat"] for p in plants]), np.array([p["lon"] for p in plants])
+    for p in pts:
+        d = solar.haversine_km(p["lat"], p["lon"], lats, lons).min()
+        assert (d < 0.01) if p["label"] == 1 else (d >= solar.EXCLUDE_KM)  # positives sit on a plant; negatives keep 2 km clear of every plant
+
+
+def test_haversine_and_offset_agree_with_known_distances():
+    import numpy as np
+
+    from georisk.validation import solar
+
+    assert solar.haversine_km(0, 0, np.array([0.0]), np.array([1.0]))[0] == pytest.approx(111.19, abs=0.1)  # one degree on the equator
+    la, lo = solar.offset(40.0, -83.0, 10.0, 90.0)  # 10 km due east
+    assert la == pytest.approx(40.0, abs=1e-6) and solar.haversine_km(40.0, -83.0, np.array([la]), np.array([lo]))[0] == pytest.approx(10.0, abs=0.05)
+
+
+def test_plant_loader_filters_small_missing_and_out_of_area(tmp_path):
+    from georisk.validation import solar
+
+    csvp = tmp_path / "p.csv"
+    csvp.write_text("ylat,xlong,p_cap_ac,p_state,p_year\n40.0,-83.0,5,OH,2020\n40.0,-83.0,0.5,OH,2020\n40.0,-83.0,,OH,2020\n"
+                    "64.0,-150.0,50,AK,2020\n21.0,-157.0,50,HI,2020\nbad,-83.0,5,OH,2020\n")
+    plants = solar.load_plants(csvp)
+    assert [(p["state"], p["mw"]) for p in plants] == [("OH", 5.0)]  # sub-MW, missing capacity, AK/HI and unparseable rows are dropped
+
+
+def test_dem_collect_records_failures_and_is_resumable(tmp_path, monkeypatch):
+    from georisk.validation import dem_collect
+
+    calls = []
+
+    def fake(pt):
+        calls.append(pt["lat"])
+        return {**pt, "t_relief_m": 1.0} if pt["lat"] != 2.0 else {**pt, "terrain_error": "dem down"}
+    monkeypatch.setattr(dem_collect, "one", fake)
+    pts = [{"lat": float(i), "lon": 0.0, "label": i % 2} for i in range(4)]
+    out = tmp_path / "s.jsonl"
+    assert dem_collect.collect(pts, out, workers=1, progress=False) == 3  # one failure recorded, three good rows
+    calls.clear()
+    assert dem_collect.collect(pts, out, workers=1, progress=False) == 0 and calls == [2.0]  # only the failed point is retried (and fails again)
+    monkeypatch.setattr(dem_collect, "one", lambda pt: {**pt, "t_relief_m": 1.0})
+    assert dem_collect.collect(pts, out, workers=1, progress=False) == 1  # it succeeds this time

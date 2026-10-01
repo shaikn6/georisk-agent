@@ -42,6 +42,17 @@ TASKS = {
                      "h_hand_big_mean_m"],
         "meaning": "P(site lies in a FEMA Special Flood Hazard Area)",
     },
+    "solar": {
+        "experimental": True,
+        "hazard": None,  # an opportunity, not a hazard: no hand-written baseline, and no imagery (panels would leak the label)
+        "kind": "opportunity",
+        "features": ["t_mean_slope_deg", "t_p90_slope_deg", "t_relief_m", "t_center_percentile", "t_low_lying_fraction",
+                     "h_hand_mean_m", "h_hand_min_m", "h_near_stream_fraction", "h_dist_to_stream_m", "h_log_stream_area", "h_hand_big_mean_m",
+                     "o_elev_mean_m", "o_tpi_m", "o_roughness_m", "o_south_exposure", "o_flat_fraction",
+                     # high-voltage grid proximity (grid.py): where utility-scale solar can actually connect
+                     "g_dist_km", "g_dist_230_km", "g_n_lines_10km", "g_max_kv_10km"],
+        "meaning": "Terrain and high-voltage-grid similarity to existing US utility-scale solar plants (not economics, irradiance, land price or permitting)",
+    },
     "fire": {
         "hazard": WildfireHazard,
         "features": ["dry_fuel_fraction", "veg_fraction", "veg_mean_nbr", "built_fraction", "mean_ndvi",
@@ -79,7 +90,7 @@ def load_rows(*paths: Path) -> list[dict]:
                 seen.add((r["lat"], r["lon"]))
                 rows.append(r)
     extra: dict[tuple[float, float], dict] = {}
-    for fname, prefix in (("hydro.jsonl", "h_"), ("topo.jsonl", "o_")):  # separately collected DEM features, joined by coordinates
+    for fname, prefix in (("hydro.jsonl", "h_"), ("topo.jsonl", "o_"), ("grid.jsonl", "g_")):  # separately collected DEM features, joined by coordinates
         fp = Path("validation_data") / fname
         if not fp.exists():
             continue
@@ -89,7 +100,7 @@ def load_rows(*paths: Path) -> list[dict]:
                 extra.setdefault((h["lat"], h["lon"]), {}).update({k: v for k, v in h.items() if k.startswith(prefix)})
     for r in rows:
         r.update(extra.get((r["lat"], r["lon"]), {}))
-    keep = [r for r in rows if "terrain_error" not in r and r.get("valid_fraction", 0) >= 0.5 and "t_relief_m" in r]
+    keep = [r for r in rows if "terrain_error" not in r and r.get("valid_fraction", 1.0) >= 0.5 and "t_relief_m" in r]
     return keep
 
 
@@ -137,8 +148,8 @@ def evaluate(task: str, *paths: Path) -> dict:
     if len(rows) < 30:
         return {"task": task, "n": len(rows), "shipped": False, "reason": "too few usable samples"}
     X, y, fill = build_matrix(rows, spec["features"])
-    heur = np.array([spec["hazard"]().score(HazardContext(*_feat_obj(r))).score for r in rows])
-    h_auc, (h_lo, h_hi) = auc(y, heur), bootstrap_auc_ci(y, heur)
+    heur = np.array([spec["hazard"]().score(HazardContext(*_feat_obj(r))).score for r in rows]) if spec["hazard"] else None
+    h_auc, (h_lo, h_hi) = (auc(y, heur), bootstrap_auc_ci(y, heur)) if heur is not None else (None, (None, None))
     cv = cross_validate(X, y, k=5, l2=L2)  # optimistic: neighbours leak between folds (reported, not gated)
     lg = leave_group_out(X, y, [r["region"] for r in rows], l2=L2)  # the honest test: unseen regions
     groups = np.array([r["region"] for r in rows])
@@ -146,7 +157,7 @@ def evaluate(task: str, *paths: Path) -> dict:
     if _HAS_SKLEARN:  # research extra: trees are trained with scikit-learn, then served as plain numpy
         members |= {"sk_forest": SkForest, "blend": lambda: Ensemble(L2, ("logistic", "sk_forest"))}
     lro = {name: _lro(mk, X, y, groups) for name, mk in members.items()}
-    ohio = np.array([r["region"] in OHIO for r in rows])
+    ohio = np.array([r["region"] in OHIO or r["region"] == "OH" for r in rows])  # city regions, or the state code (solar)
     ohio_case = None
     if ohio.sum() >= 15 and len(np.unique(y[ohio])) == 2 and len(np.unique(y[~ohio])) == 2:
         ohio_case = {"n_ohio": int(ohio.sum()), "trained_on": "all non-Ohio regions", "by_model": {}}
@@ -156,8 +167,7 @@ def evaluate(task: str, *paths: Path) -> dict:
             ohio_case["by_model"][name] = {"auc": round(auc(y[ohio], pr), 3), "auc_ci95": [round(lo, 3), round(hi, 3)],
                                            "brier": round(brier(y[ohio], pr), 4),
                                            "brier_baseline": round(brier(y[ohio], np.full(ohio.sum(), y[~ohio].mean())), 4)}
-        hh = heur[ohio]
-        ohio_case["heuristic_auc"] = round(auc(y[ohio], hh), 3)
+        ohio_case["heuristic_auc"] = round(auc(y[ohio], heur[ohio]), 3) if heur is not None else None
     # Serving rule: the product is a probability, so among candidates within 0.01 AUC of the best (ranking is a tie),
     # serve the one with the best Brier score after the recalibration gate, i.e. what users actually receive.
     best_auc = max(lro[n][1]["auc"] for n in members)
@@ -182,7 +192,7 @@ def evaluate(task: str, *paths: Path) -> dict:
     passed = lg["auc"] >= GATE["min_auc"] and lg["auc_ci95"][0] > GATE["min_ci_low"] and lg["brier"] < lg["brier_baseline"]
     rep = {
         "task": task, "n": len(rows), "positives": int(y.sum()), "meaning": spec["meaning"],
-        "heuristic": {"auc": round(h_auc, 3), "auc_ci95": [round(h_lo, 3), round(h_hi, 3)]},
+        "heuristic": {"auc": round(h_auc, 3), "auc_ci95": [round(h_lo, 3), round(h_hi, 3)]} if heur is not None else None,
         "model_random_kfold": {"auc": round(cv["auc"], 3), "auc_ci95": [round(v, 3) for v in cv["auc_ci95"]],
                                "brier": round(cv["brier"], 4), "brier_baseline": round(cv["brier_baseline"], 4)},
         "leave_region_out_by_model": {n: v[1] for n, v in lro.items()},
@@ -194,7 +204,13 @@ def evaluate(task: str, *paths: Path) -> dict:
         helps = recal["ece_after"] < recal["ece_before"] and recal["brier_after"] <= recal["brier_before"]  # ship only a clear win
         rep["recalibration"]["shipped"] = bool(helps)
         rep["artifact"] = {"features": spec["features"], "fill": fill, "model": dump_model(chosen, m), "meaning": spec["meaning"],
-                           "domain": _domain(rows)}
+                           "domain": _domain(rows), "kind": spec.get("kind", "hazard")}
+        if spec.get("experimental"):  # the weaknesses travel with the model, so no consumer can drop them
+            oh = (ohio_case or {}).get("by_model", {}).get(chosen)
+            rep["artifact"]["caveat"] = (
+                f"Experimental: held-out AUC {ens['auc']:.2f} across states"
+                + (f", but {oh['auc']:.2f} in Ohio (only {ohio_case['n_ohio']} test sites)" if oh else "")
+                + ". In flat farmland, terrain and grid distance barely separate solar sites from neighbouring fields, so treat it as a rough screen.")
         if helps:
             rep["artifact"]["calibrator"] = {"a": round(a_cal, 4), "b": round(b_cal, 4)}
         shown = fixed[ok_f] if helps else oof_chosen[ok_f]  # the probabilities users will actually see, on held-out regions
@@ -206,11 +222,12 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--flood", type=Path, nargs="+", default=[Path("validation_data/flood.jsonl"), Path("validation_data/flood2.jsonl"), Path("validation_data/flood3.jsonl"), Path("validation_data/flood_ohio.jsonl")])
     p.add_argument("--fire", type=Path, nargs="+", default=[Path("validation_data/fire.jsonl"), Path("validation_data/fire2.jsonl")])
+    p.add_argument("--solar", type=Path, nargs="+", default=[Path("validation_data/solar.jsonl")])
     p.add_argument("--report", type=Path, default=Path("validation_data/report.json"))
     p.add_argument("--artifact", type=Path, default=Path("src/georisk/data/calibration.json"))
     a = p.parse_args()
     reports, artifact = [], {}
-    for task, paths in (("flood", a.flood), ("fire", a.fire)):
+    for task, paths in (("flood", a.flood), ("fire", a.fire), ("solar", a.solar)):
         if not any(p.exists() for p in paths):
             continue
         r = evaluate(task, *paths)

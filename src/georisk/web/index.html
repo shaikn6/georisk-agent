@@ -89,20 +89,20 @@ const level=s=>s<25?"g":s<50?"y":s<75?"o":"r";const col=s=>`var(--${level(s)})`;
 function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e}
 let seq=0;const rise=e=>{e.classList.add("rise");e.style.setProperty("--i",seq++);return e};
 const NS="http://www.w3.org/2000/svg";
-function dial(score){
+function dial(score,opp){
   const svg=document.createElementNS(NS,"svg");svg.setAttribute("viewBox","0 0 150 150");const N=48,on=Math.round(score/100*N);
   for(let k=0;k<N;k++){const a=(-225+k*(270/(N-1)))*Math.PI/180,r1=58,r2=k%6===0?70:66;
     const l=document.createElementNS(NS,"line");l.setAttribute("x1",75+r1*Math.cos(a));l.setAttribute("y1",75+r1*Math.sin(a));
     l.setAttribute("x2",75+r2*Math.cos(a));l.setAttribute("y2",75+r2*Math.sin(a));l.setAttribute("stroke-width",k%6===0?2.2:1.6);
-    l.setAttribute("stroke",k<on?col(score):"var(--line)");svg.appendChild(l)}
+    l.setAttribute("stroke",k<on?(opp?"var(--acc)":col(score)):"var(--line)");svg.appendChild(l)}
   return svg}
 function segs(score){const t=el("div","track"),on=Math.round(score/100*20);for(let k=0;k<20;k++){const i=el("i");if(k<on)i.style.background=col(score);t.appendChild(i)}return t}
-function driverRows(list){
+function driverRows(list,opp){
   const max=Math.max(8,...list.map(d=>Math.abs(d.effect_pp))),wrap=el("div");
   for(const d of list){const r=el("div","drv"),l=el("div");l.appendChild(el("div","nm",d.label));
     l.appendChild(el("div","dt",d.parts.map(p=>`${p.name} ${p.value}${p.unit?" "+p.unit:""} (typical ${p.typical})`).join(" · ")));
     const rt=el("div"),bal=el("div","bal"),i=el("i"),w=Math.abs(d.effect_pp)/max*50;
-    i.style.width=w+"%";i.style.background=d.effect_pp>0?"var(--o)":"var(--g)";i.style[d.effect_pp>0?"left":"right"]="50%";bal.appendChild(i);
+    i.style.width=w+"%";i.style.background=opp?(d.effect_pp>0?"var(--acc)":"var(--mut)"):(d.effect_pp>0?"var(--o)":"var(--g)");i.style[d.effect_pp>0?"left":"right"]="50%";bal.appendChild(i);
     rt.append(bal,el("div","ef",(d.effect_pp>0?"+":"")+d.effect_pp.toFixed(1)+" pp"));r.append(l,rt);wrap.appendChild(r)}
   return wrap}
 function draw(j){
@@ -111,24 +111,29 @@ function draw(j){
   out.replaceChildren();out.className="";
   const cal=Object.entries(j.calibrated||{});
   if(cal.length){
+    const NAMES={solar:"Solar siting"},isOpp=v=>v.kind==="opportunity";
+    const haz=cal.filter(([,v])=>!isOpp(v)),opp=cal.filter(([,v])=>isOpp(v));
     const hs=rise(el("div","heroes"));
     for(const [k,v] of cal){const h=el("div","hero1"),d=el("div","dial"),pc=v.probability*100;
-      d.append(dial(pc),el("div","num serif",Math.round(pc)+"%"));const c=el("div","cap",k+" probability");h.append(d,c);hs.appendChild(h)}
+      d.append(dial(pc,isOpp(v)),el("div","num serif",Math.round(pc)+"%"));const c=el("div","cap",isOpp(v)?(NAMES[k]||k)+" similarity":k+" probability");h.append(d,c);hs.appendChild(h)}
     out.appendChild(hs);
-    out.appendChild(rise(el("div","f",`${j.lat.toFixed(4)}°, ${j.lon.toFixed(4)}° · ${j.area_km2} km². Probabilities come from models fitted on FEMA and USGS records and checked on held-out cities: useful for ranking sites, not for pricing them.`)));
-    for(const [k,v] of cal){const b=rise(el("div","block"));b.appendChild(el("h2","",`Why ${k}: ${Math.round(v.probability*100)}%`));
+    out.appendChild(rise(el("div","f",`${j.lat.toFixed(4)}°, ${j.lon.toFixed(4)}° · ${j.area_km2} km². Probabilities come from models fitted on public records (FEMA, USGS) and checked on held-out places: useful for ranking sites, not for pricing them.`)));
+    for(const [k,v] of cal){const o=isOpp(v),b=rise(el("div","block"));b.appendChild(el("h2","",o?`Energy lens: ${NAMES[k]||k} ${Math.round(v.probability*100)}%`:`Why ${k}: ${Math.round(v.probability*100)}%`));
       b.appendChild(el("div","f",v.meaning+"."));
-      if(v.evidence){const e=v.evidence,t=el("div","trk");t.append(el("b","serif",e.observed_pct+"%"),el("span","f",` of ${e.n} held-out sites scored ${e.band_pct[0]}–${e.band_pct[1]}% in testing were actually positive (95% range ${e.ci95_pct[0]}–${e.ci95_pct[1]}%).`));b.appendChild(t)}
-      b.appendChild(el("div","f","Effect of each factor versus a typical training site:"));
-      b.appendChild(v.drivers&&v.drivers.length?driverRows(v.drivers):el("div","f","This site looks typical; no single factor stands out."));out.appendChild(b)}
+      if(v.evidence){const e=v.evidence,t=el("div","trk");t.append(el("b","serif",e.observed_pct+"%"),el("span","f",` of ${e.n} held-out sites scored ${e.band_pct[0]}–${e.band_pct[1]}% in testing ${o?"were real solar-plant sites":"were actually positive"} (95% range ${e.ci95_pct[0]}–${e.ci95_pct[1]}%).`));b.appendChild(t)}
+      if(o&&v.caveat){const cv=el("div","f","");cv.appendChild(el("span","badge","experimental"));cv.appendChild(document.createTextNode(" "+v.caveat));b.appendChild(cv)}
+      b.appendChild(el("div","f",o?"What helps or hurts, versus a typical non-solar nearby site:":"Effect of each factor versus a typical training site:"));
+      b.appendChild(v.drivers&&v.drivers.length?driverRows(v.drivers,o):el("div","f","This site looks typical; no single factor stands out."));out.appendChild(b)}
   }else{
+    if(j.overall==null){out.appendChild(rise(el("div","f","Nothing could be assessed for this site right now. See the notes below.")));
+      for(const w of j.warnings||[])out.appendChild(el("div","f","⚠ "+w));return}
     const hero=rise(el("div","hero")),d=el("div","dial");d.append(dial(j.overall),el("div","num serif",String(Math.round(j.overall))));
     const t=el("div"),lv=el("div","lvl serif",j.overall_level);lv.style.color=col(j.overall);const bd=el("span","badge","unvalidated");lv.appendChild(bd);
     t.append(lv,el("div","sub","Heuristic screening index · 0–100"),el("div","coord mono",`${j.lat.toFixed(4)}°, ${j.lon.toFixed(4)}° · ${j.area_km2} km²`));hero.append(d,t);out.appendChild(hero);
     out.appendChild(rise(el("div","f","No validated model covers this site, so only the heuristic index is available. In testing it was no better than chance.")));
   }
   const det=rise(document.createElement("details"));det.className="unv";
-  det.appendChild(el("summary","",`Heuristic index ${Math.round(j.overall)}/100 · unvalidated`));
+  det.appendChild(el("summary","",j.overall==null?"Heuristic hazard scores · unavailable":`Heuristic index ${Math.round(j.overall)}/100 · unvalidated`));
   det.appendChild(el("div","f","Hand-set spectral and terrain rules. Against FEMA and USGS records they scored 0.52–0.58 AUC (0.5 is a coin flip), so treat them as descriptive context."));
   for(const h of j.hazards){const b=el("div","block");
     if(!h.score){b.append(el("b","",h.name),el("div","f",h.note||h.status));det.appendChild(b);continue}
@@ -159,6 +164,8 @@ for(const [n,la,lo,oh] of PRESETS){const b=el("button","chip"+(oh?" oh":""),n);b
 let areaOn=false,cornerA=null,areaLayer=L.layerGroup().addTo(map),pickMark=null;
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const pcol=p=>p<.25?css("--g"):p<.5?css("--y"):p<.75?css("--o"):css("--r");
+const OPP=new Set(["solar"]),ocol=p=>`color-mix(in srgb, ${css("--acc")} ${Math.round(18+p*82)}%, transparent)`;
+const tcol=(k,p)=>OPP.has(k)?ocol(p):pcol(p);
 function kmBetween(a,b){const R=6371,r=x=>x*Math.PI/180,dl=r(b.lat-a.lat),dn=r(b.lng-a.lng);
   const h=Math.sin(dl/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
 function setArea(on){areaOn=on;cornerA=null;pickMark&&pickMark.remove();document.getElementById("modeBtn").classList.toggle("on",on);
@@ -179,8 +186,11 @@ async function runArea(a,b){
 function drawArea(j){
   seq=0;out.replaceChildren();const tasks=Object.keys(j.summary).filter(k=>typeof j.summary[k]==="object");
   let cur=tasks[0];const tabs=el("div","tabs"),body=el("div");
-  const legend=el("div","legend");[["<25%","--g"],["25–50%","--y"],["50–75%","--o"],[">75%","--r"]].forEach(([t,c])=>{const i=el("i");i.style.background=css(c);const sp=el("span");sp.append(i,t);legend.appendChild(sp)});
-  function paint(){areaLayer.eachLayer(l=>{if(l._tile){const p=l._tile.calibrated&&l._tile.calibrated[cur];l.setStyle(p==null?{color:"#888",fillColor:"#888",fillOpacity:.25,weight:1,dashArray:"3 3"}:{color:pcol(p),fillColor:pcol(p),fillOpacity:.5,weight:1.5,dashArray:null})}});
+  const legend=el("div","legend");
+  function setLegend(){legend.replaceChildren();const items=OPP.has(cur)?[["lower","--acc",.25],["","--acc",.5],["","--acc",.75],["higher similarity","--acc",1]].map(([t,c,a])=>[t,`color-mix(in srgb, ${css(c)} ${Math.round(18+a*82)}%, transparent)`])
+    :[["<25%","--g"],["25–50%","--y"],["50–75%","--o"],[">75%","--r"]].map(([t,c])=>[t,css(c)]);
+    items.forEach(([t,bg])=>{const i=el("i");i.style.background=bg;const sp=el("span");sp.append(i,t);legend.appendChild(sp)})}
+  function paint(){setLegend();areaLayer.eachLayer(l=>{if(l._tile){const p=l._tile.calibrated&&l._tile.calibrated[cur];l.setStyle(p==null?{color:"#888",fillColor:"#888",fillOpacity:.25,weight:1,dashArray:"3 3"}:{color:tcol(cur,p),fillColor:tcol(cur,p),fillOpacity:OPP.has(cur)?.6:.5,weight:1.5,dashArray:null})}});
     body.replaceChildren();const S=j.summary[cur];
     const st=el("div","stat");[[Math.round(S.mean*100)+"%","mean"],[Math.round(S.max*100)+"%","highest tile"],[S.tiles_above_50pct+" / "+j.summary.assessed,"tiles ≥ 50%"]].forEach(([v,l])=>{const d=el("div");d.append(el("b","serif",v),el("span","",l));st.appendChild(d)});
     body.append(st);const w=el("div","f");w.textContent="Highest-probability tile: click to zoom.";const btn=el("button","chip","Zoom to highest tile");btn.onclick=()=>map.flyTo([S.worst_tile.lat,S.worst_tile.lon],15);body.append(w,btn)}

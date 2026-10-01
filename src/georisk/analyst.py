@@ -19,16 +19,17 @@ _NUM = re.compile(r"\d+(?:\.\d+)?")
 
 def build_facts(calibrated: dict, *, scores: list | None = None, overall: float | None, overall_level: str, confidence: str, acquired: str | None,
                 cloud_cover: float | None, warnings: list[str], source: str) -> dict:
-    hazards = {}
+    hazards, opportunities = {}, {}
     for task, v in calibrated.items():
-        hazards[task] = {
+        (opportunities if v.get("kind") == "opportunity" else hazards)[task] = {
             "probability_pct": round(v["probability"] * 100),
             "meaning": v["meaning"],
             "drivers": [{"factor": d["label"], "effect_points": d["effect_pp"]} for d in v.get("drivers", [])[:3]],
             "similar_sites": v.get("evidence"),
+            "caveat": v.get("caveat"),
         }
     return {
-        "hazards": hazards, "review_threshold_pct": round(REVIEW_AT * 100),
+        "hazards": hazards, "opportunities": opportunities, "review_threshold_pct": round(REVIEW_AT * 100),
         "heuristic_index": None if overall is None else round(overall), "heuristic_level": overall_level,
         "heuristic_hazards": {x.name: {"score": round(x.score), "level": x.level} for x in (scores or [])},
         "confidence": confidence, "scene_date": (acquired or "")[:10] or None,
@@ -45,8 +46,27 @@ def _lower_first(text: str) -> str:
     return text[:1].lower() + text[1:]  # keeps acronyms like NDVI intact
 
 
+def _energy_lens(facts: dict) -> str:
+    parts = []
+    for t, v in facts["opportunities"].items():
+        label = "solar siting" if t == "solar" else t
+        s = f"Energy lens: terrain similarity for {label} is {v['probability_pct']}%"
+        if v["drivers"]:
+            s += " (" + "; ".join(f"{_lower_first(d['factor'])} {'helps' if d['effect_points'] > 0 else 'hurts'} by {_points(d['effect_points'])}"
+                                  for d in v["drivers"]) + ")"
+        e = v.get("similar_sites")
+        if e:
+            s += f". In testing, {e['observed_pct']}% of {e['n']} sites scored {e['band_pct'][0]}-{e['band_pct'][1]}% were real solar-plant sites (95% range {e['ci95_pct'][0]}-{e['ci95_pct'][1]}%)"
+        s += ". This compares terrain and distance to the high-voltage grid only; irradiance, land price and permitting are not assessed."
+        parts.append(s + (f" {v['caveat']}" if v.get("caveat") else ""))
+    return " ".join(parts)
+
+
 def template_memo(facts: dict) -> str:
     h = facts["hazards"]
+    if not h and facts.get("opportunities"):
+        notes = [w[0].upper() + w[1:] + ("" if w.endswith(".") else ".") for w in facts["warnings"]]
+        return " ".join([_energy_lens(facts), *notes, "This is a screening estimate from elevation and grid data, not a site assessment."])
     if not h:
         idx, hh = facts["heuristic_index"], facts["heuristic_hazards"]
         desc = "; ".join(f"{n} {v['level']} ({v['score']}/100)" for n, v in hh.items())
@@ -74,6 +94,8 @@ def template_memo(facts: dict) -> str:
                      "determination or an inspection before relying on it.")
     else:
         lines.append(f"Suggested use: no hazard reaches {facts['review_threshold_pct']}%; use the figures to compare against other sites.")
+    if facts.get("opportunities"):
+        lines.append(_energy_lens(facts))
     caveats = []
     if facts["scene_date"]:
         cc = f", {facts['cloud_cover_pct']}% cloud" if facts["cloud_cover_pct"] is not None else ""
