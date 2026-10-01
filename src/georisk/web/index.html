@@ -43,6 +43,11 @@ details.unv{border-top:1px solid var(--line);padding:12px 0}details.unv summary{
 .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--mut);margin:8px 0}.legend i{display:inline-block;width:10px;height:10px;margin-right:4px;vertical-align:-1px}
 .stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}.stat div{border:1px solid var(--line);padding:8px}.stat b{display:block;font-size:22px;font-weight:400}.stat span{font:400 10.5px "Geist Mono",monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}
 .trk{display:flex;gap:10px;align-items:baseline;border:1px solid var(--line);padding:8px 10px;margin:8px 0}.trk b{font-size:30px;font-weight:400;line-height:1}
+.find{display:flex;pointer-events:auto}.find input{font:500 13px "Hanken Grotesk",sans-serif;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:2px;padding:0 12px;width:230px;backdrop-filter:blur(14px)}
+.find input::placeholder{color:var(--mut)}.find input:focus{outline:2px solid var(--acc);outline-offset:-1px}
+.dl{display:flex;gap:6px;margin:10px 0}.dl button{font:500 12px "Geist Mono",monospace;text-transform:uppercase;letter-spacing:.08em;border:1px solid var(--line);background:none;color:var(--fg);padding:6px 10px;cursor:pointer}.dl button:hover{background:var(--line)}
+.toast{font-size:12px;color:var(--mut);margin-top:8px}
+@media(max-width:820px){.find input{width:140px}}
 .badge{display:inline-block;font:500 10.5px "Geist Mono",monospace;text-transform:uppercase;letter-spacing:.08em;border:1px solid var(--o);color:var(--o);padding:1px 6px;margin-left:6px;vertical-align:middle}
 .block{border-top:1px solid var(--line);padding:13px 0}
 .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.row b{font-weight:600;text-transform:capitalize}
@@ -63,6 +68,7 @@ details.unv{border-top:1px solid var(--line);padding:12px 0}details.unv summary{
 <div id="map"></div>
 <div class="top">
   <div class="panel brand"><div class="reticle"></div><div><span class="serif">GeoRisk</span><small>Sentinel-2 · DEM · FEMA &amp; USGS calibrated</small></div></div>
+  <form class="find" id="find" role="search"><input id="q" type="search" placeholder="Search a US place or address" aria-label="Search a US place or address" autocomplete="off" maxlength="120"></form>
   <div class="panel chips" id="chips"></div>
 </div>
 <aside class="panel side" id="side"><div id="out" class="intro">
@@ -186,4 +192,29 @@ function drawArea(j){
     rise(el("div","note","Each tile is assessed on its own, so a gap in imagery only greys out that tile. Probabilities are validated models with modest skill: use them to compare places, not to price them.")));
   paint()}
 const modeBtn=el("button","chip mode","Area");modeBtn.id="modeBtn";modeBtn.onclick=()=>setArea(!areaOn);document.getElementById("chips").prepend(modeBtn);
+
+/* ---------- search, shareable links, downloads ---------- */
+const hash=(lat,lon)=>{try{history.replaceState(null,"","#"+lat.toFixed(4)+","+lon.toFixed(4))}catch{}};
+const _run=run;run=async function(lat,lon){hash(lat,lon);return _run(lat,lon)};
+document.getElementById("find").addEventListener("submit",async e=>{
+  e.preventDefault();const q=document.getElementById("q").value.trim();if(q.length<3)return;
+  out.className="";out.replaceChildren(el("h2","","Searching"),el("div","scan"));
+  try{const r=await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q="+encodeURIComponent(q),{headers:{"Accept":"application/json"}});
+    const j=await r.json();
+    if(!Array.isArray(j)||!j.length){out.replaceChildren(el("div","f",`No US place found for "${q}". Try a city and state, or click the map.`));return}
+    const lat=parseFloat(j[0].lat),lon=parseFloat(j[0].lon);if(!isFinite(lat)||!isFinite(lon))throw new Error("bad coordinates");run(lat,lon)}
+  catch{out.replaceChildren(el("div","f","Place search is unavailable right now. Click the map instead."))}});
+function runFromHash(){const m=location.hash.match(/^#(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)$/);
+  if(m&&Math.abs(+m[1])<=90&&Math.abs(+m[2])<=180)run(+m[1],+m[2])}
+setTimeout(runFromHash,300);addEventListener("hashchange",runFromHash);  /* also reacts when a link is pasted into an already-open page */
+function safeCell(v){if(typeof v==="number")return String(v);let t=v==null?"":String(v);  /* numbers (incl. negative longitudes) are safe; text is neutralised */ if(/^[=+\-@\t\r]/.test(t))t="'"+t;return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t}  /* quoted, and neutralised against spreadsheet formula injection */
+function save(name,mime,text){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:mime}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function downloads(j){const d=el("div","dl");
+  const g=el("button","","GeoJSON");g.onclick=()=>save("georisk-area.geojson","application/geo+json",JSON.stringify(j,null,1));
+  const c=el("button","","CSV");c.onclick=()=>{const tasks=Object.keys(j.summary).filter(k=>typeof j.summary[k]==="object");
+    const head=["lat","lon","assessed",...tasks.map(t=>t+"_probability"),"heuristic_index","confidence","scene_date","error"];
+    const rows=j.features.map(f=>{const p=f.properties;return [p.lat,p.lon,p.ok,...tasks.map(t=>p.calibrated&&p.calibrated[t]!=null?p.calibrated[t]:""),p.overall??"",p.confidence??"",p.scene??"",p.error??""].map(safeCell).join(",")});
+    save("georisk-area.csv","text/csv",[head.join(","),...rows].join("\n"))};
+  d.append(g,c);return d}
+const _draw=drawArea;drawArea=function(j){_draw(j);const t=out.querySelector(".tabs");if(t)t.after(downloads(j))};
 </script></body></html>

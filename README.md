@@ -270,12 +270,12 @@ So there is no "unusual site" warning; the evidence table above is the uncertain
 - **Observability**: structured JSON logs with request IDs (no coordinates or IPs), Prometheus-format `/metrics` with bounded labels.
 - **Area mode** (`POST /assess/area`, or the Area button in the demo): send a GeoJSON outline, it is cut into tiles (default 1 km, up to 16), each tile is assessed independently and in parallel, and the result is a GeoJSON FeatureCollection with a summary (mean / highest tile / tiles above 50%). A failed tile greys out only itself. Rate limit is charged per tile; outlines over 400 km² are refused.
 - **Analyst memo**: every assessment includes a plain-English risk note (headline probabilities, what drives them, suggested use, imagery date, warnings) built only from the assessment's numbers. An optional LLM rewrite (`use_llm` + `GEORISK_ALLOW_LLM=1`) is accepted only if every number it writes appears in the facts it was given; otherwise the template is used.
-- **Live demo** at `/`: click-to-assess satellite map. Leads with the validated probabilities and shows which factors drive them (what-if effect of each factor versus a typical training site); the unvalidated heuristic index is collapsed and labelled.
+- **Live demo** at `/`: click-to-assess satellite map with place search (OpenStreetMap geocoder, US only), shareable links (`/#lat,lon`) and GeoJSON/CSV export of area results (CSV cells are neutralised against spreadsheet formula injection). Leads with the validated probabilities and shows which factors drive them (what-if effect of each factor versus a typical training site); the unvalidated heuristic index is collapsed and labelled.
 
 ![GeoRisk demo: calibrated probabilities with the factors that drive them](docs/demo-drivers.png)
 
 ![Area mode: flood probability per 1 km tile along the Scioto River, Columbus](docs/demo-area.png)
-- 188 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
+- 192 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
 
 ## Operations
 
