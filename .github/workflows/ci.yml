@@ -33,7 +33,7 @@ jobs:
         run: docker run --rm georisk-ci python -c "import georisk.providers._common, georisk.providers.planetary, georisk.terrain, georisk.grid, rasterio, shapely; print('imagery stack OK, GDAL', rasterio.__gdal_version__)"
       - name: Service starts and answers
         run: |
-          docker run -d --name g -p 8000:8000 georisk-ci
+          docker run -d --name georisk-ci-run -p 8000:8000 georisk-ci
           for i in $(seq 1 30); do curl -sf localhost:8000/health && break; sleep 2; done
           curl -sf localhost:8000/health
           curl -sf -X POST localhost:8000/assess -H 'content-type: application/json' -d '{"lat":39.96,"lon":-83.0,"archetype":"floodplain"}' | python3 -c "import json,sys; j=json.load(sys.stdin); assert j['overall'] is not None; print('offline assessment OK')"
