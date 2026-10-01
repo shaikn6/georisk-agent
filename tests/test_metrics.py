@@ -81,3 +81,51 @@ def test_leave_group_out_generalises_across_groups_and_exposes_leakage():
     fooled = cross_validate(onehot, y_leak, k=5)["auc"]
     honest = leave_group_out(onehot, y_leak, groups)["auc"]
     assert fooled > 0.85 and honest < 0.65
+
+
+def test_ece_is_zero_for_perfectly_calibrated_and_large_for_overconfident():
+    from georisk.validation.metrics import ece
+
+    rng = np.random.default_rng(0)
+    p = rng.uniform(0.05, 0.95, 20000)
+    y = (rng.random(20000) < p).astype(int)
+    assert ece(y, p) < 0.02
+    assert ece(y, np.clip(p * 0.3 + 0.7, 0, 1)) > 0.25  # everything pushed to ~0.7-1.0 while outcomes are unchanged
+
+
+def test_platt_scaling_recovers_a_squeezed_model_and_keeps_the_ranking():
+    from georisk.validation.metrics import auc, ece, platt_apply, platt_fit
+
+    rng = np.random.default_rng(1)
+    true_p = rng.uniform(0.02, 0.98, 6000)
+    y = (rng.random(6000) < true_p).astype(int)
+    squeezed = 0.5 + (true_p - 0.5) * 0.4  # a model that compresses everything toward 0.5
+    a, b = platt_fit(squeezed, y)
+    fixed = platt_apply(squeezed, a, b)
+    assert a > 1.5  # the fit stretches the squeezed probabilities back out
+    assert ece(y, fixed) < ece(y, squeezed) / 3
+    assert np.isclose(auc(y, fixed), auc(y, squeezed), atol=1e-9)  # monotone: ranking is untouched
+
+
+def test_wilson_interval_matches_known_values_and_handles_edges():
+    from georisk.validation.metrics import wilson
+
+    lo, hi = wilson(50, 100)
+    assert abs(lo - 0.4038) < 1e-3 and abs(hi - 0.5962) < 1e-3
+    assert wilson(0, 20)[0] == 0.0 and wilson(20, 20)[1] == 1.0 and wilson(0, 0) == (0.0, 1.0)
+
+
+def test_reliability_table_reports_observed_rates_and_merges_thin_bands():
+    from georisk.validation.metrics import reliability_table
+
+    rng = np.random.default_rng(2)
+    p = rng.uniform(0, 1, 3000)
+    y = (rng.random(3000) < p).astype(int)
+    tab = reliability_table(p, y, min_n=100)
+    assert all(b["n"] >= 100 for b in tab) and sum(b["n"] for b in tab) == 3000
+    for b in tab:  # for a calibrated model the observed rate tracks the mean prediction inside the band
+        inside = (p >= b["lo"]) & (p < (b["hi"] if b["hi"] < 1.0 else 1.0001))
+        m = p[inside].mean()
+        assert abs(b["rate"] - m) < 4 * (m * (1 - m) / b["n"]) ** 0.5 + 0.01  # within 4 standard errors of sampling noise
+    sparse = reliability_table(np.array([0.1, 0.9] * 30), np.array([0, 1] * 30), min_n=40)
+    assert sum(b["n"] for b in sparse) == 60 and all(b["n"] >= 40 or len(sparse) == 1 for b in sparse)

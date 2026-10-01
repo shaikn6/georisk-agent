@@ -191,6 +191,45 @@ Ohio holdout (trained on other states): feature blend 0.833, Prithvi alone 0.624
 
 So the served models stay the small ones. This is the same answer DeepSeek/Qwen-style work keeps pointing to: a small, well-matched model beats a big general one when the task is narrow and the data is clean.
 
+## Can you trust the probabilities? (calibration audit)
+
+Ranking sites correctly (AUC) is not the same as being honest about *how likely*. I checked, on held-out regions, what actually
+happened to sites at each predicted probability. The averaged models were **compressed toward 50%**: when flood said about 26%,
+only 11% of those sites were really in a flood zone; when it said 65%, 81% were (expected calibration error 0.099 flood, 0.124 fire).
+
+- **Fix:** a two-parameter correction (Platt scaling) fitted on held-out predictions, evaluated by correcting each region using only the
+  *other* regions. Flood: calibration error 0.099 -> **0.021** and Brier 0.1717 -> 0.1628, so it ships.
+  Fire: error 0.124 -> 0.087 but Brier 0.2002 -> 0.2027 (slightly worse), so it does **not** ship; a correction must improve both.
+- **Track record shown with every probability.** For each prediction the API (`evidence`) and the demo show what happened to similar held-out
+  sites, with a 95% Wilson interval, e.g. "22% of 120 sites scored 20-30% were actually in a flood zone (16-31%)".
+
+Flood (shown probability vs what happened in held-out regions):
+
+| Predicted band | Sites | Actually positive | 95% range |
+|---|---|---|---|
+| 0–20% | 179 | 11% | 7–17% |
+| 20–30% | 120 | 22% | 16–31% |
+| 30–40% | 79 | 35% | 26–46% |
+| 40–50% | 77 | 53% | 42–64% |
+| 50–60% | 56 | 57% | 44–69% |
+| 60–70% | 67 | 66% | 54–76% |
+| 70–80% | 86 | 81% | 72–88% |
+| 80–90% | 77 | 87% | 78–93% |
+| 90–100% | 135 | 88% | 82–93% |
+
+Wildfire (not recalibrated, so this table is the honest reading of the raw score):
+
+| Predicted band | Sites | Actually positive | 95% range |
+|---|---|---|---|
+| 0–40% | 87 | 15% | 9–24% |
+| 40–50% | 50 | 48% | 35–62% |
+| 50–60% | 67 | 66% | 54–76% |
+| 60–100% | 88 | 77% | 68–85% |
+
+A check that did *not* pan out, and so was not built: I tested whether "this site looks unlike the training data" predicts worse accuracy.
+It does not; unusual sites (extreme terrain, obvious rivers) were predicted *better*, and the hard cases are ordinary mid-range sites.
+So there is no "unusual site" warning; the evidence table above is the uncertainty signal that the data supports.
+
 ## What is implemented
 
 - Geodesic AOI construction; validated inputs.
@@ -216,7 +255,7 @@ So the served models stay the small ones. This is the same answer DeepSeek/Qwen-
 ![GeoRisk demo: calibrated probabilities with the factors that drive them](docs/demo-drivers.png)
 
 ![Area mode: flood probability per 1 km tile along the Scioto River, Columbus](docs/demo-area.png)
-- 129 offline tests (fault injection, API security, rate limiting, metrics, calibration, model round-trips) + live smoke tests.
+- 136 offline tests (fault injection, API security, rate limiting, metrics, calibration, model round-trips) + live smoke tests.
 
 ## Deploying (Vercel)
 

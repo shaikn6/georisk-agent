@@ -42,6 +42,7 @@ details.unv{border-top:1px solid var(--line);padding:12px 0}details.unv summary{
 .tabs{display:flex;gap:6px;margin:0 0 10px}.tab{font:500 12px "Geist Mono",monospace;text-transform:uppercase;letter-spacing:.08em;border:1px solid var(--line);background:none;color:var(--fg);padding:5px 10px;cursor:pointer}.tab.on{background:var(--acc);color:var(--accfg);border-color:var(--acc)}
 .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--mut);margin:8px 0}.legend i{display:inline-block;width:10px;height:10px;margin-right:4px;vertical-align:-1px}
 .stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}.stat div{border:1px solid var(--line);padding:8px}.stat b{display:block;font-size:22px;font-weight:400}.stat span{font:400 10.5px "Geist Mono",monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}
+.trk{display:flex;gap:10px;align-items:baseline;border:1px solid var(--line);padding:8px 10px;margin:8px 0}.trk b{font-size:30px;font-weight:400;line-height:1}
 .badge{display:inline-block;font:500 10.5px "Geist Mono",monospace;text-transform:uppercase;letter-spacing:.08em;border:1px solid var(--o);color:var(--o);padding:1px 6px;margin-left:6px;vertical-align:middle}
 .block{border-top:1px solid var(--line);padding:13px 0}
 .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.row b{font-weight:600;text-transform:capitalize}
@@ -110,7 +111,9 @@ function draw(j){
     out.appendChild(hs);
     out.appendChild(rise(el("div","f",`${j.lat.toFixed(4)}°, ${j.lon.toFixed(4)}° · ${j.area_km2} km². Probabilities come from models fitted on FEMA and USGS records and checked on held-out cities: useful for ranking sites, not for pricing them.`)));
     for(const [k,v] of cal){const b=rise(el("div","block"));b.appendChild(el("h2","",`Why ${k}: ${Math.round(v.probability*100)}%`));
-      b.appendChild(el("div","f",v.meaning+". Effect of each factor versus a typical training site:"));
+      b.appendChild(el("div","f",v.meaning+"."));
+      if(v.evidence){const e=v.evidence,t=el("div","trk");t.append(el("b","serif",e.observed_pct+"%"),el("span","f",` of ${e.n} held-out sites scored ${e.band_pct[0]}–${e.band_pct[1]}% in testing were actually positive (95% range ${e.ci95_pct[0]}–${e.ci95_pct[1]}%).`));b.appendChild(t)}
+      b.appendChild(el("div","f","Effect of each factor versus a typical training site:"));
       b.appendChild(v.drivers&&v.drivers.length?driverRows(v.drivers):el("div","f","This site looks typical; no single factor stands out."));out.appendChild(b)}
   }else{
     const hero=rise(el("div","hero")),d=el("div","dial");d.append(dial(j.overall),el("div","num serif",String(Math.round(j.overall))));

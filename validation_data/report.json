@@ -104,6 +104,14 @@
       }
     },
     "served_model": "blend",
+    "recalibration": {
+      "ece_before": 0.0994,
+      "ece_after": 0.021,
+      "brier_before": 0.1717,
+      "brier_after": 0.1628,
+      "auc_after": 0.836,
+      "shipped": true
+    },
     "ohio_holdout": {
       "n_ohio": 292,
       "trained_on": "all non-Ohio regions",
@@ -268,6 +276,14 @@
       }
     },
     "served_model": "sk_forest",
+    "recalibration": {
+      "ece_before": 0.1244,
+      "ece_after": 0.0875,
+      "brier_before": 0.2002,
+      "brier_after": 0.2027,
+      "auc_after": 0.754,
+      "shipped": false
+    },
     "ohio_holdout": null,
     "gate_applied_to": "model_leave_region_out (served model)",
     "gate": {
