@@ -121,3 +121,23 @@ def hydrology_features(dem: np.ndarray, cell_m: float, aoi_slice: tuple[slice, s
     hb = np.where(np.isfinite(sub[1]), sub[1], np.nanmax(hand_b) if np.isfinite(hand_b).any() else 0.0)
     return HydroFeatures(float(hs.mean()), float(hs.min()), float((hs <= 3.0).mean()), float(min(d, 6000.0)),
                          float(np.log10(max(area, cell_km2))), float(hb.mean()))
+
+
+@dataclass(frozen=True)
+class TopoFeatures:
+    elev_mean_m: float      # absolute elevation of the AOI (proxy for climate/fuel zone)
+    tpi_m: float            # AOI mean minus the whole window's mean: +ve = ridge/upland, -ve = valley
+    roughness_m: float      # standard deviation of AOI elevation
+    south_exposure: float   # -1 (north-facing) .. +1 (south-facing), slope-weighted; south-facing slopes are hotter and drier
+
+
+def topo_features(dem: np.ndarray, cell_m: float, aoi_slice: tuple[slice, slice]) -> TopoFeatures:
+    """Fire-relevant topography from a DEM window (north-up raster: row index increases southward)."""
+    dem = np.asarray(dem, dtype="float64")
+    if dem.ndim != 2 or min(dem.shape) < 8 or not np.isfinite(dem).all():
+        raise ValueError("DEM must be a finite 2-D array of at least 8x8")
+    aoi = dem[aoi_slice]
+    gy, gx = np.gradient(dem, cell_m)  # dz per metre along rows (southward) and columns (eastward)
+    mag = np.hypot(gx, gy)[aoi_slice]
+    south = float((-gy[aoi_slice]).sum() / (mag.sum() + 1e-9))  # downslope direction pointing south = south-facing
+    return TopoFeatures(float(aoi.mean()), float(aoi.mean() - dem.mean()), float(aoi.std()), float(np.clip(south, -1.0, 1.0)))

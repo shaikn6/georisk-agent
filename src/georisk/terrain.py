@@ -98,10 +98,10 @@ def load_terrain(bbox: BBox, grid: int = 64) -> TerrainFeatures:
 HYDRO_HALF_M, HYDRO_GRID, AOI_HALF_M = 3000, 200, 500  # 6 km window at 30 m; features summarise the central 1 km
 
 
-def load_hydrology(lat: float, lon: float):
-    """Height-above-nearest-drainage features for the site, from a 6 km DEM window. Raises TerrainUnavailable on failure."""
+def load_dem_features(lat: float, lon: float):
+    """(HydroFeatures, TopoFeatures) for the site from one 6 km DEM window. Raises TerrainUnavailable on failure."""
     from .aoi import bbox_from_point
-    from .hydrology import hydrology_features
+    from .hydrology import hydrology_features, topo_features
 
     try:
         from pystac_client import Client
@@ -124,6 +124,12 @@ def load_hydrology(lat: float, lon: float):
         cell_m = 2 * HYDRO_HALF_M / HYDRO_GRID
         half = round(AOI_HALF_M / cell_m)
         c = HYDRO_GRID // 2
-        return hydrology_features(dem, cell_m, (slice(c - half, c + half), slice(c - half, c + half)))
+        aoi = (slice(c - half, c + half), slice(c - half, c + half))
+        return hydrology_features(dem, cell_m, aoi), topo_features(dem, cell_m, aoi)
     except Exception as exc:
         raise TerrainUnavailable(str(exc)) from exc
+
+
+def load_hydrology(lat: float, lon: float):
+    """Height-above-nearest-drainage features only (see load_dem_features)."""
+    return load_dem_features(lat, lon)[0]

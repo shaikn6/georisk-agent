@@ -104,6 +104,21 @@
       }
     },
     "served_model": "blend",
+    "selection": {
+      "best_auc": 0.866,
+      "eligible": [
+        "logistic",
+        "blend"
+      ],
+      "final_brier": {
+        "logistic": 0.1521,
+        "forest": 0.1732,
+        "knn": 0.1865,
+        "ensemble": 0.1593,
+        "sk_forest": 0.1587,
+        "blend": 0.1517
+      }
+    },
     "recalibration": {
       "ece_before": 0.091,
       "ece_after": 0.0347,
@@ -193,95 +208,111 @@
       ]
     },
     "model_random_kfold": {
-      "auc": 0.798,
+      "auc": 0.823,
       "auc_ci95": [
-        0.745,
-        0.847
+        0.776,
+        0.867
       ],
-      "brier": 0.1786,
+      "brier": 0.1705,
       "brier_baseline": 0.2499
     },
     "leave_region_out_by_model": {
       "logistic": {
-        "auc": 0.743,
+        "auc": 0.762,
         "auc_ci95": [
-          0.686,
-          0.802
+          0.708,
+          0.82
         ],
-        "brier": 0.2027,
+        "brier": 0.1979,
         "brier_baseline": 0.2499
       },
       "forest": {
-        "auc": 0.754,
+        "auc": 0.736,
         "auc_ci95": [
-          0.697,
-          0.813
+          0.678,
+          0.796
         ],
-        "brier": 0.2005,
+        "brier": 0.2041,
         "brier_baseline": 0.2499
       },
       "knn": {
-        "auc": 0.75,
+        "auc": 0.758,
         "auc_ci95": [
-          0.693,
-          0.802
+          0.696,
+          0.809
         ],
-        "brier": 0.2053,
+        "brier": 0.2052,
         "brier_baseline": 0.2499
       },
       "ensemble": {
-        "auc": 0.764,
-        "auc_ci95": [
-          0.708,
-          0.818
-        ],
-        "brier": 0.1936,
-        "brier_baseline": 0.2499
-      },
-      "sk_forest": {
-        "auc": 0.784,
-        "auc_ci95": [
-          0.733,
-          0.837
-        ],
-        "brier": 0.2002,
-        "brier_baseline": 0.2499
-      },
-      "blend": {
-        "auc": 0.775,
+        "auc": 0.777,
         "auc_ci95": [
           0.721,
           0.829
         ],
-        "brier": 0.1941,
+        "brier": 0.1903,
+        "brier_baseline": 0.2499
+      },
+      "sk_forest": {
+        "auc": 0.781,
+        "auc_ci95": [
+          0.727,
+          0.834
+        ],
+        "brier": 0.2021,
+        "brier_baseline": 0.2499
+      },
+      "blend": {
+        "auc": 0.78,
+        "auc_ci95": [
+          0.727,
+          0.832
+        ],
+        "brier": 0.1909,
         "brier_baseline": 0.2499
       }
     },
     "model_leave_region_out": {
-      "auc": 0.784,
+      "auc": 0.777,
       "auc_ci95": [
-        0.733,
-        0.837
+        0.721,
+        0.829
       ],
-      "brier": 0.2002,
+      "brier": 0.1903,
       "brier_baseline": 0.2499,
       "per_region_auc": {
         "az_central": 0.57,
-        "co_front_range": 0.77,
-        "nm_north": 0.91,
-        "norcal_sierra": 0.81,
-        "or_cascades": 0.67,
-        "socal": 0.99,
-        "wa_east_cascades": 0.74
+        "co_front_range": 0.8,
+        "nm_north": 0.95,
+        "norcal_sierra": 0.73,
+        "or_cascades": 0.69,
+        "socal": 0.98,
+        "wa_east_cascades": 0.76
       }
     },
-    "served_model": "sk_forest",
+    "served_model": "ensemble",
+    "selection": {
+      "best_auc": 0.781,
+      "eligible": [
+        "ensemble",
+        "sk_forest",
+        "blend"
+      ],
+      "final_brier": {
+        "logistic": 0.1979,
+        "forest": 0.2041,
+        "knn": 0.2052,
+        "ensemble": 0.1903,
+        "sk_forest": 0.2021,
+        "blend": 0.1909
+      }
+    },
     "recalibration": {
-      "ece_before": 0.1244,
-      "ece_after": 0.0875,
-      "brier_before": 0.2002,
-      "brier_after": 0.2027,
-      "auc_after": 0.754,
+      "ece_before": 0.065,
+      "ece_after": 0.1162,
+      "brier_before": 0.1903,
+      "brier_after": 0.204,
+      "auc_after": 0.744,
       "shipped": false
     },
     "ohio_holdout": null,

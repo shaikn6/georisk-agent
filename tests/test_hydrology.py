@@ -66,3 +66,39 @@ def test_runtime_is_small_enough_for_a_request():
     t = time.time()
     hy.hydrology_features(valley(200), 30.0, (slice(80, 120), slice(80, 120)))
     assert time.time() - t < 3.0  # a 6 km window at 30 m must not dominate a ~3 s assessment
+
+
+def plane(n=60, drop_per_row=0.0, drop_per_col=0.0):
+    r, c = np.mgrid[0:n, 0:n]
+    return 500.0 + drop_per_row * r + drop_per_col * c  # row index grows southward in a north-up raster
+
+
+AOI = (slice(20, 40), slice(20, 40))
+
+
+def test_south_facing_slopes_read_plus_one_and_north_facing_minus_one():
+    south = hy.topo_features(plane(drop_per_row=-2.0), 30.0, AOI)  # elevation falls going south: the slope faces south
+    north = hy.topo_features(plane(drop_per_row=2.0), 30.0, AOI)
+    east = hy.topo_features(plane(drop_per_col=-2.0), 30.0, AOI)  # faces east: no north/south component
+    assert south.south_exposure == pytest.approx(1.0, abs=1e-6) and north.south_exposure == pytest.approx(-1.0, abs=1e-6)
+    assert abs(east.south_exposure) < 1e-6
+
+
+def test_ridges_are_upland_and_valleys_are_low_relative_to_the_window():
+    n = 60
+    _, c = np.mgrid[0:n, 0:n]
+    ridge = 100.0 - 1.0 * np.abs(c - 30)  # peak along the centre column
+    valley_dem = 100.0 + 1.0 * np.abs(c - 30)
+    assert hy.topo_features(ridge, 30.0, AOI).tpi_m > 3 > -3 > hy.topo_features(valley_dem, 30.0, AOI).tpi_m
+    assert hy.topo_features(np.full((60, 60), 250.0), 30.0, AOI).south_exposure == 0.0  # flat: no division blow-up
+
+
+def test_topo_features_report_elevation_and_roughness_and_reject_bad_dems():
+    t = hy.topo_features(plane(drop_per_row=-2.0), 30.0, AOI)
+    assert t.elev_mean_m == pytest.approx(441.0, abs=0.5) and t.roughness_m > 0  # 500 - 2 m/row * mean row 29.5
+    with pytest.raises(ValueError):
+        hy.topo_features(np.full((4, 4), 1.0), 30.0, (slice(1, 3), slice(1, 3)))
+    bad = np.full((20, 20), 5.0)
+    bad[3, 3] = np.inf
+    with pytest.raises(ValueError):
+        hy.topo_features(bad, 30.0, (slice(5, 15), slice(5, 15)))

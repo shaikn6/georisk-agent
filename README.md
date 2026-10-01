@@ -125,26 +125,31 @@ so roughly one in seven such predictions is wrong, which is exactly what the tra
 
 Weakest regions for flood: Toledo (0.59), New Orleans (0.61, pumped and leveed), Miami (0.68).
 
-**Wildfire** (292 points, 149 inside a perimeter; western US only)
+**Wildfire** (292 points, 149 inside a perimeter; western US only; 13 features incl. topography)
 
 | Model | AUC | 95% CI | Brier (baseline 0.250) |
 |---|---|---|---|
 | Original hand-tuned heuristic | 0.576 | 0.51–0.64 | n/a |
-| Logistic regression | 0.742 | 0.69–0.80 | 0.202 |
-| Bagged random forest (numpy) | 0.754 | 0.70–0.81 | 0.201 |
-| k-nearest neighbours | 0.750 | 0.69–0.80 | 0.205 |
-| Average of logistic + forest + kNN | 0.763 | 0.71–0.82 | 0.193 |
-| Random forest (scikit-learn-trained, exported to numpy) **(served)** | 0.784 | 0.73–0.84 | 0.200 |
-| Blend: logistic + scikit-learn forest | 0.774 | 0.72–0.83 | 0.193 |
+| Logistic regression (inputs capped at 2 SD) | 0.762 | 0.71–0.82 | 0.198 |
+| Bagged random forest (numpy) | 0.736 | 0.68–0.80 | 0.204 |
+| k-nearest neighbours | 0.758 | 0.70–0.81 | 0.205 |
+| Average of logistic + forest + kNN **(served)** | 0.777 | 0.72–0.83 | 0.190 |
+| Random forest (scikit-learn-trained, exported to numpy) | 0.781 | 0.73–0.83 | 0.202 |
+| Blend: logistic + scikit-learn forest | 0.780 | 0.73–0.83 | 0.191 |
 
-Growing the fire set from 98 to 292 points also lowered the numbers (the previous best, kNN, went from 0.799 to
-0.750) and changed which model wins, which is what a small, noisy sample does.
+Topography from the same elevation window (elevation, ridge/valley position, roughness, and whether the slope faces south) made the fire
+probabilities better behaved rather than ranking much better: raw calibration error fell from 0.124 to 0.065 and Brier from 0.200 to 0.190,
+with AUC about the same (0.78). Weakest regions: central Arizona (0.57) and the Oregon Cascades (0.69). Known miss: a site inside the 2018 Camp Fire
+perimeter (Paradise, CA) scores only 36%; the label is "has burned before", so this is a screening signal, not a forecast.
+
+**Which model serves.** The product is a probability, so among candidates whose AUC is within 0.01 of the best (a ranking tie), the served model is the one
+with the best Brier score after the recalibration gate (flood: blend; fire: ensemble). Selection rule, scores and the recalibration decision are in `validation_data/report.json`.
 
 How to read this honestly:
 - The original heuristic scores were **statistically indistinguishable from chance** against ground truth.
   That is why the service also returns a *calibrated probability* from a fitted model, and warns when a
   hazard's heuristic score has no validated model at the site's location.
-- The served model for each task is whichever candidate has the best leave-region-out AUC. The candidate
+- The served model for each task is chosen by the rule above (best post-recalibration Brier among the near-best-AUC candidates). The candidate
   set was fixed in advance with no per-model hyper-parameter search, but with a few hundred samples the top
   candidates' intervals overlap, so the choice is not a proven win over the runner-up. A wider
   scikit-learn benchmark (`python -m georisk.validation.benchmark`: gradient boosting, extra trees, SVM)
@@ -270,7 +275,7 @@ So there is no "unusual site" warning; the evidence table above is the uncertain
 ![GeoRisk demo: calibrated probabilities with the factors that drive them](docs/demo-drivers.png)
 
 ![Area mode: flood probability per 1 km tile along the Scioto River, Columbus](docs/demo-area.png)
-- 177 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
+- 180 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
 
 ## Deploying (Vercel)
 
