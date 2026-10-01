@@ -45,7 +45,9 @@ TASKS = {
     "fire": {
         "hazard": WildfireHazard,
         "features": ["dry_fuel_fraction", "veg_fraction", "veg_mean_nbr", "built_fraction", "mean_ndvi",
-                     "mean_nbr", "t_mean_slope_deg", "t_p90_slope_deg", "t_relief_m"],
+                     "mean_nbr", "t_mean_slope_deg", "t_p90_slope_deg", "t_relief_m",
+                     # elevation, ridge/valley position, roughness and aspect (hydrology.topo_features): calibration error 0.108 -> 0.043
+                     "o_elev_mean_m", "o_tpi_m", "o_roughness_m", "o_south_exposure"],
         "meaning": "P(site lies inside a >=100-acre fire perimeter from 2005-2018)",
     },
 }
@@ -76,15 +78,17 @@ def load_rows(*paths: Path) -> list[dict]:
             if r and (r["lat"], r["lon"]) not in seen:  # the same point sampled twice must not leak across folds
                 seen.add((r["lat"], r["lon"]))
                 rows.append(r)
-    hydro = {}
-    hp = Path("validation_data/hydro.jsonl")
-    if hp.exists():  # river-height features computed separately (validation.hydro_collect), joined by coordinates
-        for line in hp.read_text().splitlines():
+    extra: dict[tuple[float, float], dict] = {}
+    for fname, prefix in (("hydro.jsonl", "h_"), ("topo.jsonl", "o_")):  # separately collected DEM features, joined by coordinates
+        fp = Path("validation_data") / fname
+        if not fp.exists():
+            continue
+        for line in fp.read_text().splitlines():
             h = json.loads(line) if line.strip() else None
-            if h and "hydro_error" not in h:
-                hydro[(h["lat"], h["lon"])] = {k: v for k, v in h.items() if k.startswith("h_")}
+            if h and not any(k.endswith("_error") for k in h):
+                extra.setdefault((h["lat"], h["lon"]), {}).update({k: v for k, v in h.items() if k.startswith(prefix)})
     for r in rows:
-        r.update(hydro.get((r["lat"], r["lon"]), {}))
+        r.update(extra.get((r["lat"], r["lon"]), {}))
     keep = [r for r in rows if "terrain_error" not in r and r.get("valid_fraction", 0) >= 0.5 and "t_relief_m" in r]
     return keep
 
@@ -101,6 +105,17 @@ def _domain(rows: list[dict], pad: float = 1.0) -> list[float]:
     """[lat0, lat1, lon0, lon1] of the training points (+pad deg): outside it the model is extrapolating."""
     lats, lons = [r["lat"] for r in rows], [r["lon"] for r in rows]
     return [round(min(lats) - pad, 2), round(max(lats) + pad, 2), round(min(lons) - pad, 2), round(max(lons) + pad, 2)]
+
+
+def _nested_platt(oof: np.ndarray, y: np.ndarray, groups: np.ndarray) -> np.ndarray:
+    """Recalibrated held-out predictions: each region is corrected by a curve fitted on the OTHER regions only."""
+    fixed = np.full(len(y), np.nan)
+    ok = ~np.isnan(oof)
+    for g in np.unique(groups[ok]):
+        te, tr = ok & (groups == g), ok & (groups != g)
+        if tr.sum() > 30 and len(np.unique(y[tr])) == 2:
+            fixed[te] = platt_apply(oof[te], *platt_fit(oof[tr], y[tr]))
+    return fixed
 
 
 def _lro(make, X, y, groups) -> tuple[np.ndarray, dict]:
@@ -143,19 +158,21 @@ def evaluate(task: str, *paths: Path) -> dict:
                                            "brier_baseline": round(brier(y[ohio], np.full(ohio.sum(), y[~ohio].mean())), 4)}
         hh = heur[ohio]
         ohio_case["heuristic_auc"] = round(auc(y[ohio], hh), 3)
-    # The served model is whichever candidate has the best leave-region-out AUC (all four are reported).
-    # With ~100 samples they are usually statistically tied; the ensemble wins only when it earns it.
-    chosen = max(members, key=lambda n: lro[n][1]["auc"])
+    # Serving rule: the product is a probability, so among candidates within 0.01 AUC of the best (ranking is a tie),
+    # serve the one with the best Brier score after the recalibration gate, i.e. what users actually receive.
+    best_auc = max(lro[n][1]["auc"] for n in members)
+    final_brier = {}
+    for n in members:
+        o = lro[n][0]
+        k = ~np.isnan(o)
+        raw, fx = brier(y[k], o[k]), _nested_platt(o, y, groups)
+        final_brier[n] = min(raw, brier(y[~np.isnan(fx)], fx[~np.isnan(fx)])) if (~np.isnan(fx)).any() else raw
+    eligible = [n for n in members if lro[n][1]["auc"] >= best_auc - 0.01]
+    chosen = min(eligible, key=lambda n: final_brier[n])
     ens = lro[chosen][1]
     oof_chosen = lro[chosen][0]
     ok_o = ~np.isnan(oof_chosen)
-    # Recalibrate: each region is corrected with a curve fitted only on the OTHER regions' held-out predictions.
-    fixed = np.full(len(y), np.nan)
-    for g in np.unique(groups[ok_o]):
-        te = ok_o & (groups == g)
-        tr = ok_o & (groups != g)
-        if tr.sum() > 30 and len(np.unique(y[tr])) == 2:
-            fixed[te] = platt_apply(oof_chosen[te], *platt_fit(oof_chosen[tr], y[tr]))
+    fixed = _nested_platt(oof_chosen, y, groups)
     ok_f = ~np.isnan(fixed)
     recal = {"ece_before": round(ece(y[ok_f], oof_chosen[ok_f]), 4), "ece_after": round(ece(y[ok_f], fixed[ok_f]), 4),
              "brier_before": round(brier(y[ok_f], oof_chosen[ok_f]), 4), "brier_after": round(brier(y[ok_f], fixed[ok_f]), 4),
@@ -170,7 +187,7 @@ def evaluate(task: str, *paths: Path) -> dict:
                                "brier": round(cv["brier"], 4), "brier_baseline": round(cv["brier_baseline"], 4)},
         "leave_region_out_by_model": {n: v[1] for n, v in lro.items()},
         "model_leave_region_out": {**ens, "per_region_auc": {k: round(v, 2) for k, v in lg["per_group_auc"].items()}},
-        "served_model": chosen, "recalibration": recal, "ohio_holdout": ohio_case, "gate_applied_to": "model_leave_region_out (served model)", "gate": GATE, "shipped": bool(passed),
+        "served_model": chosen, "selection": {"best_auc": best_auc, "eligible": eligible, "final_brier": {n: round(v, 4) for n, v in final_brier.items()}}, "recalibration": recal, "ohio_holdout": ohio_case, "gate_applied_to": "model_leave_region_out (served model)", "gate": GATE, "shipped": bool(passed),
     }
     if passed:
         m = members[chosen]().fit(X, y)

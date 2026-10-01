@@ -63,6 +63,10 @@ def test_a_real_signal_is_shipped_with_everything_the_service_needs(tmp_path, mo
     art = rep["artifact"]
     assert set(art) >= {"features", "fill", "model", "meaning", "domain", "reliability"} and art["features"] == FLOOD_COLS
     assert rep["model_leave_region_out"]["auc"] > 0.7 and len(art["domain"]) == 4
+    sel = rep["selection"]  # the serving rule: best Brier among candidates within 0.01 AUC of the best
+    lro = rep["leave_region_out_by_model"]
+    assert all(lro[n]["auc"] >= sel["best_auc"] - 0.01 for n in sel["eligible"]) and rep["served_model"] in sel["eligible"]
+    assert sel["final_brier"][rep["served_model"]] == min(sel["final_brier"][n] for n in sel["eligible"])
     assert all(b["n"] > 0 and b["ci"][0] <= b["rate"] <= b["ci"][1] for b in art["reliability"])
 
 
