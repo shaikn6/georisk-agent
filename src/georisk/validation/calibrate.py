@@ -19,7 +19,18 @@ from ..scoring import Features
 from ..terrain import TerrainFeatures
 from .dataset import OHIO
 from .ensemble import KNN, Ensemble, Forest, SkForest, dump_model
-from .metrics import Logistic, auc, bootstrap_auc_ci, brier, cross_validate, leave_group_out
+from .metrics import (
+    Logistic,
+    auc,
+    bootstrap_auc_ci,
+    brier,
+    cross_validate,
+    ece,
+    leave_group_out,
+    platt_apply,
+    platt_fit,
+    reliability_table,
+)
 
 TASKS = {
     "flood": {
@@ -124,6 +135,20 @@ def evaluate(task: str, *paths: Path) -> dict:
     # With ~100 samples they are usually statistically tied; the ensemble wins only when it earns it.
     chosen = max(members, key=lambda n: lro[n][1]["auc"])
     ens = lro[chosen][1]
+    oof_chosen = lro[chosen][0]
+    ok_o = ~np.isnan(oof_chosen)
+    # Recalibrate: each region is corrected with a curve fitted only on the OTHER regions' held-out predictions.
+    fixed = np.full(len(y), np.nan)
+    for g in np.unique(groups[ok_o]):
+        te = ok_o & (groups == g)
+        tr = ok_o & (groups != g)
+        if tr.sum() > 30 and len(np.unique(y[tr])) == 2:
+            fixed[te] = platt_apply(oof_chosen[te], *platt_fit(oof_chosen[tr], y[tr]))
+    ok_f = ~np.isnan(fixed)
+    recal = {"ece_before": round(ece(y[ok_f], oof_chosen[ok_f]), 4), "ece_after": round(ece(y[ok_f], fixed[ok_f]), 4),
+             "brier_before": round(brier(y[ok_f], oof_chosen[ok_f]), 4), "brier_after": round(brier(y[ok_f], fixed[ok_f]), 4),
+             "auc_after": round(auc(y[ok_f], fixed[ok_f]), 3)}
+    a_cal, b_cal = platt_fit(oof_chosen[ok_o], y[ok_o])
     lg = {**lg, "auc": ens["auc"], "auc_ci95": ens["auc_ci95"], "brier": ens["brier"], "brier_baseline": ens["brier_baseline"]}
     passed = lg["auc"] >= GATE["min_auc"] and lg["auc_ci95"][0] > GATE["min_ci_low"] and lg["brier"] < lg["brier_baseline"]
     rep = {
@@ -133,12 +158,18 @@ def evaluate(task: str, *paths: Path) -> dict:
                                "brier": round(cv["brier"], 4), "brier_baseline": round(cv["brier_baseline"], 4)},
         "leave_region_out_by_model": {n: v[1] for n, v in lro.items()},
         "model_leave_region_out": {**ens, "per_region_auc": {k: round(v, 2) for k, v in lg["per_group_auc"].items()}},
-        "served_model": chosen, "ohio_holdout": ohio_case, "gate_applied_to": "model_leave_region_out (served model)", "gate": GATE, "shipped": bool(passed),
+        "served_model": chosen, "recalibration": recal, "ohio_holdout": ohio_case, "gate_applied_to": "model_leave_region_out (served model)", "gate": GATE, "shipped": bool(passed),
     }
     if passed:
         m = members[chosen]().fit(X, y)
+        helps = recal["ece_after"] < recal["ece_before"] and recal["brier_after"] <= recal["brier_before"]  # ship only a clear win
+        rep["recalibration"]["shipped"] = bool(helps)
         rep["artifact"] = {"features": spec["features"], "fill": fill, "model": dump_model(chosen, m), "meaning": spec["meaning"],
                            "domain": _domain(rows)}
+        if helps:
+            rep["artifact"]["calibrator"] = {"a": round(a_cal, 4), "b": round(b_cal, 4)}
+        shown = fixed[ok_f] if helps else oof_chosen[ok_f]  # the probabilities users will actually see, on held-out regions
+        rep["artifact"]["reliability"] = reliability_table(shown, y[ok_f])
     return rep
 
 

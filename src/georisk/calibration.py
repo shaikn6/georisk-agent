@@ -17,6 +17,7 @@ import numpy as np
 from .scoring import Features
 from .terrain import TerrainFeatures
 from .validation.ensemble import load_model
+from .validation.metrics import platt_apply
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +66,26 @@ def _units(spec: dict) -> list[tuple[str, tuple[str, ...]]]:
     return units + [(LABELS.get(c, (c, ""))[0], (c,)) for c in spec["features"] if c not in grouped]
 
 
+class Recalibrated:
+    """A model plus its recalibration curve; the probability shown and the drivers explained are the same number."""
+
+    def __init__(self, model, calibrator: dict | None) -> None:
+        self.model, self.cal = model, calibrator
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        p = self.model.predict_proba(X)
+        return platt_apply(p, self.cal["a"], self.cal["b"]) if self.cal else p
+
+
+def similar_sites(spec: dict, p: float) -> dict | None:
+    """What happened to held-out sites in testing whose predicted probability was close to this one."""
+    for b in spec.get("reliability", []):
+        if b["lo"] <= p < b["hi"] or (p >= 1.0 and b["hi"] >= 1.0):
+            return {"n": b["n"], "observed_pct": round(b["rate"] * 100), "ci95_pct": [round(b["ci"][0] * 100), round(b["ci"][1] * 100)],
+                    "band_pct": [round(b["lo"] * 100), round(b["hi"] * 100)]}
+    return None
+
+
 def explain(model, spec: dict, x: np.ndarray, top: int = 5) -> list[dict]:
     """What-if drivers: how much does the probability change if a feature (group) were a typical training site's value?
 
@@ -108,9 +129,11 @@ def calibrated_probabilities(features: Features, terrain: TerrainFeatures | None
         if d and lat is not None and lon is not None and not (d[0] <= lat <= d[1] and d[2] <= lon <= d[3]):
             continue  # outside the validated region: no probability beats a made-up one
         try:
-            model, x = load_model(spec["model"]), _vector(spec, features, terrain)
+            model = Recalibrated(load_model(spec["model"]), spec.get("calibrator"))  # undoes the squeeze toward 0.5
+            x = _vector(spec, features, terrain)
             p = float(model.predict_proba(x)[0])
-            out[task] = {"probability": round(p, 3), "meaning": spec["meaning"], "drivers": explain(model, spec, x)}
+            out[task] = {"probability": round(p, 3), "meaning": spec["meaning"], "drivers": explain(model, spec, x),
+                         "evidence": similar_sites(spec, p)}
         except Exception as exc:  # noqa: BLE001
             log.warning("calibrated %s probability failed: %s", task, exc)
     return out

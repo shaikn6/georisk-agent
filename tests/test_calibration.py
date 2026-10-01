@@ -149,3 +149,40 @@ def test_correlated_features_are_explained_together_not_as_offsetting_pairs():
     labels = [d["label"] for d in explain(model, spec, x, top=8)]
     assert "Terrain steepness" in labels and "Mean slope" not in labels  # one driver, not two that cancel
     assert json.dumps(explain(model, spec, x))  # JSON-serialisable for the API
+
+
+def test_recalibrated_wrapper_changes_probability_and_drivers_consistently():
+    from georisk.calibration import Recalibrated, explain
+    from georisk.validation.metrics import Logistic
+
+    rng = np.random.default_rng(4)
+    X = rng.random((300, 2))
+    y = (X[:, 0] + 0.2 * rng.normal(size=300) > 0.5).astype(int)
+    base = Logistic(1.0).fit(X, y)
+    cal = Recalibrated(base, {"a": 2.0, "b": 0.0})
+    x = np.array([[0.9, 0.5]])
+    assert cal.predict_proba(x)[0] > base.predict_proba(x)[0]  # a > 1 stretches an above-0.5 prediction upward
+    assert Recalibrated(base, None).predict_proba(x)[0] == base.predict_proba(x)[0]
+    spec = {"features": ["water_fraction", "t_relief_m"], "fill": {"water_fraction": 0.5, "t_relief_m": 0.5}}
+    d = explain(cal, spec, x)
+    assert d and abs(d[0]["effect_pp"]) > 0
+
+
+def test_similar_sites_lookup_reports_the_matching_band():
+    from georisk.calibration import similar_sites
+
+    spec = {"reliability": [{"lo": 0.0, "hi": 0.5, "n": 200, "rate": 0.2, "ci": [0.15, 0.26]},
+                            {"lo": 0.5, "hi": 1.0, "n": 150, "rate": 0.7, "ci": [0.62, 0.77]}]}
+    assert similar_sites(spec, 0.61) == {"n": 150, "observed_pct": 70, "ci95_pct": [62, 77], "band_pct": [50, 100]}
+    assert similar_sites(spec, 1.0)["observed_pct"] == 70 and similar_sites({}, 0.4) is None
+
+
+def test_memo_cites_the_track_record_with_numbers_that_pass_the_guardrail():
+    from georisk import analyst
+
+    cal = {"flood": {"probability": 0.61, "meaning": "m", "drivers": [],
+                     "evidence": {"n": 150, "observed_pct": 70, "ci95_pct": [62, 77], "band_pct": [50, 100]}}}
+    f = analyst.build_facts(cal, overall=30.0, overall_level="low", confidence="high", acquired=None, cloud_cover=None, warnings=[], source="x")
+    text = analyst.template_memo(f)
+    assert "70% of 150 held-out sites" in text and "95% range 62-77%" in text
+    assert analyst.verify_numbers(text, f)  # the memo's own numbers all come from the facts

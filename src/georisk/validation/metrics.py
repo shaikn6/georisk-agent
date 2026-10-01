@@ -131,3 +131,75 @@ def leave_group_out(X: np.ndarray, y: np.ndarray, groups, l2: float = 1.0, seed:
     return {"auc": auc(y[ok], oof[ok]), "auc_ci95": [lo, hi], "brier": brier(y[ok], oof[ok]),
             "brier_baseline": brier(y[ok], np.full(ok.sum(), y[ok].mean())), "n": int(ok.sum()),
             "per_group_auc": per_group, "oof": oof}
+
+
+def ece(y: np.ndarray, p: np.ndarray, edges=(0, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 1.0001)) -> float:
+    """Expected calibration error: bin-weighted gap between predicted probability and observed frequency."""
+    y, p = np.asarray(y, float), np.asarray(p, float)
+    tot = 0.0
+    for lo, hi in zip(edges[:-1], edges[1:], strict=True):
+        m = (p >= lo) & (p < hi)
+        if m.any():
+            tot += m.sum() / len(y) * abs(p[m].mean() - y[m].mean())
+    return float(tot)
+
+
+def _logit(p: np.ndarray) -> np.ndarray:
+    p = np.clip(np.asarray(p, float), 1e-4, 1 - 1e-4)
+    return np.log(p / (1 - p))
+
+
+def platt_fit(p: np.ndarray, y: np.ndarray, iters: int = 50) -> tuple[float, float]:
+    """Two-parameter recalibration: sigmoid(a * logit(p) + b). Newton steps; tiny ridge keeps it stable."""
+    z, y = _logit(p), np.asarray(y, float)
+    a, b = 1.0, 0.0
+    for _ in range(iters):
+        q = sigmoid(a * z + b)
+        w = q * (1 - q) + 1e-9
+        g = np.array([((q - y) * z).sum(), (q - y).sum()])
+        H = np.array([[(w * z * z).sum() + 1e-6, (w * z).sum()], [(w * z).sum(), w.sum() + 1e-6]])
+        step = np.linalg.solve(H, g)
+        a, b = a - step[0], b - step[1]
+        if np.abs(step).max() < 1e-9:
+            break
+    return float(a), float(b)
+
+
+def platt_apply(p: np.ndarray, a: float, b: float) -> np.ndarray:
+    return sigmoid(a * _logit(p) + b)
+
+
+def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """95% Wilson score interval for a proportion; well behaved for small n and rates near 0 or 1."""
+    if n == 0:
+        return 0.0, 1.0
+    ph = k / n
+    d = 1 + z * z / n
+    c = (ph + z * z / (2 * n)) / d
+    h = z * np.sqrt(ph * (1 - ph) / n + z * z / (4 * n * n)) / d
+    return float(max(0.0, c - h)), float(min(1.0, c + h))
+
+
+def reliability_table(p: np.ndarray, y: np.ndarray, min_n: int = 40, edges=(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0001)) -> list[dict]:
+    """What actually happened to held-out sites in each probability band; thin bands merge into a neighbour until n >= min_n."""
+    p, y = np.asarray(p, float), np.asarray(y, float)
+    bins = [[edges[i], edges[i + 1]] for i in range(len(edges) - 1)]
+    cnt = lambda b: int(((p >= b[0]) & (p < b[1])).sum())
+    i = 0
+    while i < len(bins):
+        if cnt(bins[i]) < min_n and len(bins) > 1:
+            j = i + 1 if i + 1 < len(bins) else i - 1
+            lo, hi = min(bins[i][0], bins[j][0]), max(bins[i][1], bins[j][1])
+            bins = [b for k, b in enumerate(bins) if k not in (i, j)]
+            bins.insert(min(i, j), [lo, hi])
+            i = 0
+        else:
+            i += 1
+    out = []
+    for lo, hi in sorted(bins):
+        m = (p >= lo) & (p < hi)
+        k, n = int(y[m].sum()), int(m.sum())
+        l, h = wilson(k, n)
+        out.append({"lo": round(float(lo), 3), "hi": round(min(float(hi), 1.0), 3), "n": n, "rate": round(k / n, 3) if n else None,
+                    "ci": [round(l, 3), round(h, 3)]})
+    return out
