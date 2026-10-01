@@ -50,8 +50,8 @@ def sigmoid(z: np.ndarray) -> np.ndarray:
 class Logistic:
     """L2-regularised logistic regression with feature standardisation (Newton/IRLS)."""
 
-    def __init__(self, l2: float = 1.0, iters: int = 50) -> None:
-        self.l2, self.iters = l2, iters
+    def __init__(self, l2: float = 1.0, iters: int = 50, zmax: float | None = None) -> None:
+        self.l2, self.iters, self.zmax = l2, iters, zmax  # zmax caps standardised inputs so tails cannot extrapolate linearly
         self.mean = self.std = self.w = None
         self.b = 0.0
 
@@ -60,7 +60,7 @@ class Logistic:
         y = np.asarray(y, dtype=float)
         self.mean, self.std = X.mean(0), X.std(0)
         self.std[self.std < 1e-9] = 1.0
-        Z = np.hstack([(X - self.mean) / self.std, np.ones((len(X), 1))])
+        Z = np.hstack([self._z(X), np.ones((len(X), 1))])
         w = np.zeros(Z.shape[1])
         reg = np.eye(Z.shape[1]) * self.l2
         reg[-1, -1] = 0.0  # never penalise the intercept
@@ -75,16 +75,19 @@ class Logistic:
         self.w, self.b = w[:-1], float(w[-1])
         return self
 
-    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+    def _z(self, X: np.ndarray) -> np.ndarray:
         Z = (np.asarray(X, dtype=float) - self.mean) / self.std
-        return sigmoid(Z @ self.w + self.b)
+        return Z if self.zmax is None else np.clip(Z, -self.zmax, self.zmax)
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        return sigmoid(self._z(X) @ self.w + self.b)
 
     def to_dict(self) -> dict:
-        return {"mean": self.mean.tolist(), "std": self.std.tolist(), "w": self.w.tolist(), "b": self.b, "l2": self.l2}
+        return {"mean": self.mean.tolist(), "std": self.std.tolist(), "w": self.w.tolist(), "b": self.b, "l2": self.l2, "zmax": self.zmax}
 
     @classmethod
     def from_dict(cls, d: dict) -> Logistic:
-        m = cls(l2=d.get("l2", 1.0))
+        m = cls(l2=d.get("l2", 1.0), zmax=d.get("zmax"))  # older artifacts have no cap
         m.mean, m.std, m.w, m.b = np.array(d["mean"]), np.array(d["std"]), np.array(d["w"]), d["b"]
         return m
 

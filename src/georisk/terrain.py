@@ -93,3 +93,37 @@ def load_terrain(bbox: BBox, grid: int = 64) -> TerrainFeatures:
         return terrain_features(dem, bbox)
     except Exception as exc:
         raise TerrainUnavailable(str(exc)) from exc
+
+
+HYDRO_HALF_M, HYDRO_GRID, AOI_HALF_M = 3000, 200, 500  # 6 km window at 30 m; features summarise the central 1 km
+
+
+def load_hydrology(lat: float, lon: float):
+    """Height-above-nearest-drainage features for the site, from a 6 km DEM window. Raises TerrainUnavailable on failure."""
+    from .aoi import bbox_from_point
+    from .hydrology import hydrology_features
+
+    try:
+        from pystac_client import Client
+
+        from .providers._common import read_window
+
+        bbox = bbox_from_point(lat, lon, HYDRO_HALF_M)
+        items = list(Client.open(_EARTH_SEARCH, timeout=20).search(collections=["cop-dem-glo-30"], bbox=bbox.as_list(), max_items=4).items())
+        if not items:
+            raise ProviderError("no DEM tile covers this site")
+        tiles = [read_window(i.assets["data"].href, bbox, (HYDRO_GRID, HYDRO_GRID), fill_value=np.nan).astype("float64") for i in items]
+        dem = combine_first_valid(tiles)
+        dem[dem <= -1000] = np.nan
+        bad = ~np.isfinite(dem)
+        if bad.mean() > 0.05:
+            raise ValueError(f"{bad.mean():.0%} of the DEM window is missing")
+        dem = np.where(bad, np.nanmedian(dem), dem)
+        pad = np.pad(dem, 1, mode="edge")  # same 3x3 median as the terrain features: towers/canopy are not terrain
+        dem = np.median(np.stack([pad[i : i + dem.shape[0], j : j + dem.shape[1]] for i in range(3) for j in range(3)]), axis=0)
+        cell_m = 2 * HYDRO_HALF_M / HYDRO_GRID
+        half = round(AOI_HALF_M / cell_m)
+        c = HYDRO_GRID // 2
+        return hydrology_features(dem, cell_m, (slice(c - half, c + half), slice(c - half, c + half)))
+    except Exception as exc:
+        raise TerrainUnavailable(str(exc)) from exc

@@ -91,25 +91,39 @@ Each label is joined to Sentinel-2 imagery + Copernicus DEM features for the sam
 Everything below is **leave-region-out**: the model is trained on every region except one and scored on
 the held-out region, so it is judged on places it has never seen. AUC 0.5 = coin flip.
 
-**Flood** (876 points, 448 in an SFHA, 16 US regions incl. six Ohio cities)
+**Flood** (876 points, 448 in an SFHA, 16 US regions incl. six Ohio cities; 14 features: imagery, terrain and river height)
 
 | Model | AUC | 95% CI | Brier (baseline 0.250) |
 |---|---|---|---|
 | Original hand-tuned heuristic | 0.607 | 0.57–0.64 | n/a |
-| Logistic regression | 0.829 | 0.80–0.86 | 0.169 |
-| Bagged random forest (numpy) | 0.806 | 0.78–0.83 | 0.189 |
-| k-nearest neighbours | 0.786 | 0.75–0.82 | 0.195 |
-| Average of logistic + forest + kNN | 0.828 | 0.80–0.85 | 0.173 |
-| Random forest (scikit-learn-trained, exported to numpy) | 0.829 | 0.80–0.85 | 0.190 |
-| Blend: logistic + scikit-learn forest **(served)** | 0.844 | 0.81–0.87 | 0.172 |
+| Logistic regression (inputs capped at 2 SD) | 0.859 | 0.84–0.88 | 0.152 |
+| Bagged random forest (numpy) | 0.821 | 0.79–0.85 | 0.178 |
+| k-nearest neighbours | 0.800 | 0.77–0.83 | 0.186 |
+| Average of logistic + forest + kNN | 0.850 | 0.83–0.87 | 0.159 |
+| Random forest (scikit-learn-trained, exported to numpy) | 0.852 | 0.82–0.88 | 0.183 |
+| Blend: logistic + scikit-learn forest **(served)** | 0.866 | 0.84–0.89 | 0.158 |
 
 **Ohio case study** (Columbus, Cincinnati, Cleveland, Dayton, Toledo, Akron; 292 points). Trained on
-*non-Ohio* regions only, tested in Ohio: blend model AUC **0.821**
-(0.77–0.87); logistic 0.803, forest 0.727, kNN 0.732.
+*non-Ohio* regions only, tested in Ohio: blend model AUC **0.856** (0.81–0.90); logistic 0.851, forest 0.764, kNN 0.768.
 The original heuristic scored **0.519** there (no better than chance).
-Growing the flood set from 401 to 876 points lowered every number a little (the served blend went from
-0.863 to 0.844, Ohio from 0.857 to 0.821): the smaller sample was optimistic, so treat these as the
-reliable figures.
+
+**What moved the flood numbers, in order (held-out regions):** the heuristic scored ~0.58; fitted models on imagery + terrain
+0.845; **river-height features (hydrology) 0.856** (Ohio holdout 0.821 -> 0.854, the biggest single gain); **capping extreme
+inputs for the linear member 0.866** (it extrapolated badly on steep sites). Each step was kept only because it improved held-out regions.
+
+### River height (hydrology)
+
+Flood zones are river phenomena, so `src/georisk/hydrology.py` derives them from the same free 30 m elevation data: fill pits, route
+water downhill (D8), accumulate flow, mark streams (>= 0.09 km2 upstream), and compute **HAND**, the height above the nearest drainage, plus
+distance to and size of the stream the site drains to. Pure numpy; about 0.1 s of compute per site (the network read dominates).
+Verified on synthetic landscapes with known answers (a V-valley's HAND equals its wall height; pits are filled; accumulation counts cells exactly).
+Spot check against FEMA: the Houston bayou site went from 43% to 73% (it is in a flood zone); the Scioto River site scores 84% (in one).
+
+**Known miss:** a steep chaparral hillside east of Santa Rosa, CA scores 88% but FEMA says it is outside a flood zone. In training, steep
+sites that sit near a sizeable stream are often canyon-bottom flood zones; this site resembles them. Held-out accuracy in that probability band is about 85%,
+so roughly one in seven such predictions is wrong, which is exactly what the track-record table below says.
+
+Weakest regions for flood: Toledo (0.59), New Orleans (0.61, pumped and leveed), Miami (0.68).
 
 **Wildfire** (292 points, 149 inside a perimeter; western US only)
 
@@ -195,10 +209,10 @@ So the served models stay the small ones. This is the same answer DeepSeek/Qwen-
 
 Ranking sites correctly (AUC) is not the same as being honest about *how likely*. I checked, on held-out regions, what actually
 happened to sites at each predicted probability. The averaged models were **compressed toward 50%**: when flood said about 26%,
-only 11% of those sites were really in a flood zone; when it said 65%, 81% were (expected calibration error 0.099 flood, 0.124 fire).
+only 11% of those sites were really in a flood zone; when it said 65%, 81% were (expected calibration error 0.099 flood and 0.124 fire at the time of the audit).
 
 - **Fix:** a two-parameter correction (Platt scaling) fitted on held-out predictions, evaluated by correcting each region using only the
-  *other* regions. Flood: calibration error 0.099 -> **0.021** and Brier 0.1717 -> 0.1628, so it ships.
+  *other* regions. Flood (current model): calibration error 0.091 -> **0.035** and Brier 0.1580 -> 0.1517, so it ships.
   Fire: error 0.124 -> 0.087 but Brier 0.2002 -> 0.2027 (slightly worse), so it does **not** ship; a correction must improve both.
 - **Track record shown with every probability.** For each prediction the API (`evidence`) and the demo show what happened to similar held-out
   sites, with a 95% Wilson interval, e.g. "22% of 120 sites scored 20-30% were actually in a flood zone (16-31%)".
@@ -207,15 +221,16 @@ Flood (shown probability vs what happened in held-out regions):
 
 | Predicted band | Sites | Actually positive | 95% range |
 |---|---|---|---|
-| 0–20% | 179 | 11% | 7–17% |
-| 20–30% | 120 | 22% | 16–31% |
-| 30–40% | 79 | 35% | 26–46% |
-| 40–50% | 77 | 53% | 42–64% |
-| 50–60% | 56 | 57% | 44–69% |
-| 60–70% | 67 | 66% | 54–76% |
-| 70–80% | 86 | 81% | 72–88% |
-| 80–90% | 77 | 87% | 78–93% |
-| 90–100% | 135 | 88% | 82–93% |
+| 0–10% | 139 | 2% | 1–6% |
+| 10–20% | 83 | 18% | 11–28% |
+| 20–30% | 56 | 20% | 11–32% |
+| 30–40% | 70 | 53% | 41–64% |
+| 40–50% | 77 | 39% | 29–50% |
+| 50–60% | 68 | 56% | 44–67% |
+| 60–70% | 61 | 67% | 55–78% |
+| 70–80% | 68 | 75% | 64–84% |
+| 80–90% | 105 | 86% | 78–91% |
+| 90–100% | 149 | 89% | 82–93% |
 
 Wildfire (not recalibrated, so this table is the honest reading of the raw score):
 
@@ -255,7 +270,7 @@ So there is no "unusual site" warning; the evidence table above is the uncertain
 ![GeoRisk demo: calibrated probabilities with the factors that drive them](docs/demo-drivers.png)
 
 ![Area mode: flood probability per 1 km tile along the Scioto River, Columbus](docs/demo-area.png)
-- 136 offline tests (fault injection, API security, rate limiting, metrics, calibration, model round-trips) + live smoke tests.
+- 147 offline tests (fault injection, API security, rate limiting, metrics, calibration, model round-trips) + live smoke tests.
 
 ## Deploying (Vercel)
 

@@ -34,8 +34,10 @@ def load_artifact() -> dict:
         return {}
 
 
-def _vector(spec: dict, features: Features, terrain: TerrainFeatures) -> np.ndarray:
+def _vector(spec: dict, features: Features, terrain: TerrainFeatures, hydro=None) -> np.ndarray:
     row = {**asdict(features), **{f"t_{k}": v for k, v in asdict(terrain).items()}}
+    if hydro is not None:
+        row |= {f"h_{k}": v for k, v in asdict(hydro).items()}  # absent hydrology falls back to the training median via `fill`
     out = []
     for c in spec["features"]:
         v = row.get(c)
@@ -48,14 +50,19 @@ LABELS = {
     "mean_nbr": ("Burn/dryness index (NBR)", ""), "dry_fuel_fraction": ("Dry vegetation", "%"), "veg_fraction": ("Dense vegetation", "%"),
     "veg_mean_nbr": ("Vegetation dryness (NBR)", ""), "t_mean_slope_deg": ("Mean slope", "deg"), "t_p90_slope_deg": ("Steep-slope extent", "deg"),
     "t_relief_m": ("Local relief", "m"), "t_center_percentile": ("Elevation vs surroundings", "%"), "t_low_lying_fraction": ("Low-lying ground", "%"),
+    "h_hand_mean_m": ("Height above nearest stream", "m"), "h_hand_min_m": ("Lowest point above stream", "m"),
+    "h_near_stream_fraction": ("Ground within 3 m of a stream", "%"), "h_dist_to_stream_m": ("Distance to nearest stream", "m"),
+    "h_log_stream_area": ("Size of the stream it drains to (log km2)", ""), "h_hand_big_mean_m": ("Height above large rivers", "m"),
 }
-_PERCENT = {"water_fraction", "built_fraction", "dry_fuel_fraction", "veg_fraction", "t_center_percentile", "t_low_lying_fraction"}
+_PERCENT = {"water_fraction", "built_fraction", "dry_fuel_fraction", "veg_fraction", "t_center_percentile", "t_low_lying_fraction", "h_near_stream_fraction"}
 
 
 # Correlated features are occluded together: one at a time they produce offsetting, misleading effects.
 GROUPS = {
     "Terrain steepness": ("t_mean_slope_deg", "t_p90_slope_deg"),
     "Low-lying position": ("t_center_percentile", "t_low_lying_fraction"),
+    "Height above streams": ("h_hand_mean_m", "h_hand_min_m", "h_hand_big_mean_m", "h_near_stream_fraction"),
+    "Stream proximity and size": ("h_dist_to_stream_m", "h_log_stream_area"),
     "Fuel dryness": ("dry_fuel_fraction", "veg_mean_nbr", "mean_nbr"),
 }
 
@@ -117,7 +124,7 @@ def outside_domain(lat: float, lon: float, artifact: dict | None = None) -> list
 
 
 def calibrated_probabilities(features: Features, terrain: TerrainFeatures | None, artifact: dict | None = None,
-                             lat: float | None = None, lon: float | None = None) -> dict:
+                             lat: float | None = None, lon: float | None = None, hydro=None) -> dict:
     """{task: {"probability": p, "meaning": str}} for every task with a shipped model. Needs terrain; skips
     tasks whose training domain does not contain (lat, lon)."""
     art = load_artifact() if artifact is None else artifact
@@ -130,7 +137,7 @@ def calibrated_probabilities(features: Features, terrain: TerrainFeatures | None
             continue  # outside the validated region: no probability beats a made-up one
         try:
             model = Recalibrated(load_model(spec["model"]), spec.get("calibrator"))  # undoes the squeeze toward 0.5
-            x = _vector(spec, features, terrain)
+            x = _vector(spec, features, terrain, hydro)
             p = float(model.predict_proba(x)[0])
             out[task] = {"probability": round(p, 3), "meaning": spec["meaning"], "drivers": explain(model, spec, x),
                          "evidence": similar_sites(spec, p)}
