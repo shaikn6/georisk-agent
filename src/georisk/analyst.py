@@ -27,6 +27,7 @@ def build_facts(calibrated: dict, *, scores: list | None = None, overall: float 
             "drivers": [{"factor": d["label"], "effect_points": d["effect_pp"]} for d in v.get("drivers", [])[:3]],
             "similar_sites": v.get("evidence"),
             "caveat": v.get("caveat"),
+            "region_caution": v.get("region_caution"),
         }
     return {
         "hazards": hazards, "opportunities": opportunities, "review_threshold_pct": round(REVIEW_AT * 100),
@@ -88,6 +89,9 @@ def template_memo(facts: dict) -> str:
         if e:
             lines.append(f"Track record for {t}: in testing, {e['observed_pct']}% of {e['n']} held-out sites scored {e['band_pct'][0]}-{e['band_pct'][1]}% "
                          f"were actually positive (95% range {e['ci95_pct'][0]}-{e['ci95_pct'][1]}%).")
+    for t, v in h.items():
+        if v.get("region_caution"):
+            lines.append(f"Caution for {t}: {v['region_caution']}")
     top_t, top_v = max(h.items(), key=lambda kv: kv[1]["probability_pct"])
     if top_v["probability_pct"] >= facts["review_threshold_pct"]:
         lines.append(f"Suggested use: the {top_t} figure is at or above {facts['review_threshold_pct']}%, so confirm it with an official "

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from dataclasses import asdict
 from functools import lru_cache
 from importlib import resources
@@ -107,6 +108,29 @@ def similar_sites(spec: dict, p: float) -> dict | None:
     return None
 
 
+PLACE_NAMES = {"az_central": "central Arizona", "or_cascades": "the Oregon Cascades", "co_front_range": "the Colorado Front Range",
+               "wa_east_cascades": "the eastern Washington Cascades", "norcal_sierra": "the northern California Sierra",
+               "socal": "Southern California", "nm_north": "northern New Mexico", "st_louis": "St. Louis", "new_orleans": "New Orleans",
+               "cedar_rapids": "Cedar Rapids"}
+
+
+def region_caution(spec: dict, lat: float | None, lon: float | None) -> str | None:
+    """A caution when the site lies inside a region where this model tested weakly on held-out data."""
+    if lat is None or lon is None:
+        return None
+    for r in spec.get("weak_regions", []):
+        g = r["geometry"]
+        if r["shape"] == "circle":
+            km = math.hypot((lat - g[0]) * 110.574, (lon - g[1]) * 111.32 * math.cos(math.radians(g[0])))
+            inside = km <= g[2]
+        else:
+            inside = g[0] <= lat <= g[1] and g[2] <= lon <= g[3]
+        if inside:
+            return (f"This model tested weakly near {PLACE_NAMES.get(r['name'], r['name'].replace('_', ' ').title())} (held-out AUC {r['auc']:.2f} on {r['n']} sites): "
+                    "treat the probability with extra caution.")
+    return None
+
+
 def explain(model, spec: dict, x: np.ndarray, top: int = 5) -> list[dict]:
     """What-if drivers: how much does the probability change if a feature (group) were a typical training site's value?
 
@@ -159,7 +183,7 @@ def calibrated_probabilities(features: Features | None, terrain: TerrainFeatures
             p = float(model.predict_proba(x)[0])
             out[task] = {"probability": round(p, 3), "meaning": spec["meaning"], "drivers": explain(model, spec, x),
                          "evidence": similar_sites(spec, p), "kind": spec.get("kind", "hazard"),
-                         "caveat": spec.get("caveat")}
+                         "caveat": spec.get("caveat"), "region_caution": region_caution(spec, lat, lon)}
         except Exception as exc:  # noqa: BLE001
             log.warning("calibrated %s probability failed: %s", task, exc)
     return out

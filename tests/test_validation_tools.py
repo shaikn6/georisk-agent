@@ -245,3 +245,19 @@ def test_dem_collect_records_failures_and_is_resumable(tmp_path, monkeypatch):
     assert dem_collect.collect(pts, out, workers=1, progress=False) == 0 and calls == [2.0]  # only the failed point is retried (and fails again)
     monkeypatch.setattr(dem_collect, "one", lambda pt: {**pt, "t_relief_m": 1.0})
     assert dem_collect.collect(pts, out, workers=1, progress=False) == 1  # it succeeds this time
+
+
+def test_a_region_where_the_model_tests_poorly_is_flagged_with_its_geometry(tmp_path, monkeypatch):
+    """Plant a signal everywhere except 'miami', whose labels are pure noise: it must come out as a weak region."""
+    monkeypatch.chdir(tmp_path)
+    rows = synth_rows(360, signal=True, seed=4, regions=("houston", "dallas", "miami", "toledo", "columbus", "cleveland"))
+    rng = np.random.default_rng(8)
+    for r in rows:
+        if r["region"] == "miami":
+            r["label"] = int(rng.random() < 0.5)
+    write(tmp_path / "f.jsonl", rows)
+    rep = calibrate.evaluate("flood", tmp_path / "f.jsonl")
+    weak = {w["name"]: w for w in rep["artifact"]["weak_regions"]}
+    assert "miami" in weak and weak["miami"]["shape"] == "circle" and len(weak["miami"]["geometry"]) == 3 and weak["miami"]["n"] >= 25
+    assert "houston" not in weak  # regions with real signal are not flagged
+    assert rep["model_leave_region_out"]["per_region_n"]["miami"] >= 25  # per-region accuracy now comes from the served model
