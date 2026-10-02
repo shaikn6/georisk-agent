@@ -121,6 +121,7 @@ function draw(j){
     for(const [k,v] of cal){const o=isOpp(v),b=rise(el("div","block"));b.appendChild(el("h2","",o?`Energy lens: ${NAMES[k]||k} ${Math.round(v.probability*100)}%`:`Why ${k}: ${Math.round(v.probability*100)}%`));
       b.appendChild(el("div","f",v.meaning+"."));
       if(v.evidence){const e=v.evidence,t=el("div","trk");t.append(el("b","serif",e.observed_pct+"%"),el("span","f",` of ${e.n} held-out sites scored ${e.band_pct[0]}–${e.band_pct[1]}% in testing ${o?"were real solar-plant sites":"were actually positive"} (95% range ${e.ci95_pct[0]}–${e.ci95_pct[1]}%).`));b.appendChild(t)}
+      if(v.region_caution){const rc=el("div","f","");rc.style.color="var(--o)";rc.textContent="⚠ "+v.region_caution;b.appendChild(rc)}
       if(o&&v.caveat){const cv=el("div","f","");cv.appendChild(el("span","badge","experimental"));cv.appendChild(document.createTextNode(" "+v.caveat));b.appendChild(cv)}
       b.appendChild(el("div","f",o?"What helps or hurts, versus a typical non-solar nearby site:":"Effect of each factor versus a typical training site:"));
       b.appendChild(v.drivers&&v.drivers.length?driverRows(v.drivers,o):el("div","f","This site looks typical; no single factor stands out."));out.appendChild(b)}

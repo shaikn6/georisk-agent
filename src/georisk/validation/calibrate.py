@@ -17,7 +17,7 @@ from ..hazards.flood import FloodHazard
 from ..hazards.wildfire import WildfireHazard
 from ..scoring import Features
 from ..terrain import TerrainFeatures
-from .dataset import OHIO
+from .dataset import FIRE_REGIONS, FLOOD_REGIONS, OHIO
 from .ensemble import KNN, ZMAX, Ensemble, Forest, SkForest, dump_model
 from .metrics import (
     Logistic,
@@ -69,6 +69,7 @@ try:
 except ImportError:
     _HAS_SKLEARN = False
 L2 = 3.0  # fixed a priori: no hyper-parameter search on a small sample
+WEAK_AUC, WEAK_MIN_N = 0.70, 25  # a region this weak in held-out testing gets an automatic caution at serving time
 GATE = {"min_auc": 0.6, "min_ci_low": 0.5}
 
 
@@ -181,6 +182,11 @@ def evaluate(task: str, *paths: Path) -> dict:
     chosen = min(eligible, key=lambda n: final_brier[n])
     ens = lro[chosen][1]
     oof_chosen = lro[chosen][0]
+    per_region, per_region_n = {}, {}
+    for g in np.unique(groups):  # accuracy per held-out region of the model that is actually served
+        m = (groups == g) & ~np.isnan(oof_chosen)
+        if m.sum() >= 10 and len(np.unique(y[m])) == 2:
+            per_region[str(g)], per_region_n[str(g)] = auc(y[m], oof_chosen[m]), int(m.sum())
     ok_o = ~np.isnan(oof_chosen)
     fixed = _nested_platt(oof_chosen, y, groups)
     ok_f = ~np.isnan(fixed)
@@ -196,7 +202,7 @@ def evaluate(task: str, *paths: Path) -> dict:
         "model_random_kfold": {"auc": round(cv["auc"], 3), "auc_ci95": [round(v, 3) for v in cv["auc_ci95"]],
                                "brier": round(cv["brier"], 4), "brier_baseline": round(cv["brier_baseline"], 4)},
         "leave_region_out_by_model": {n: v[1] for n, v in lro.items()},
-        "model_leave_region_out": {**ens, "per_region_auc": {k: round(v, 2) for k, v in lg["per_group_auc"].items()}},
+        "model_leave_region_out": {**ens, "per_region_auc": {k: round(v, 2) for k, v in per_region.items()}, "per_region_n": per_region_n},
         "served_model": chosen, "selection": {"best_auc": best_auc, "eligible": eligible, "final_brier": {n: round(v, 4) for n, v in final_brier.items()}}, "recalibration": recal, "ohio_holdout": ohio_case, "gate_applied_to": "model_leave_region_out (served model)", "gate": GATE, "shipped": bool(passed),
     }
     if passed:
@@ -205,6 +211,11 @@ def evaluate(task: str, *paths: Path) -> dict:
         rep["recalibration"]["shipped"] = bool(helps)
         rep["artifact"] = {"features": spec["features"], "fill": fill, "model": dump_model(chosen, m), "meaning": spec["meaning"],
                            "domain": _domain(rows), "kind": spec.get("kind", "hazard")}
+        geom = {"flood": FLOOD_REGIONS, "fire": FIRE_REGIONS}.get(task)  # state-level solar has no region geometry to warn with
+        if geom:
+            rep["artifact"]["weak_regions"] = [
+                {"name": g, "auc": round(per_region[g], 2), "n": per_region_n[g], "geometry": list(geom[g]), "shape": "circle" if task == "flood" else "box"}
+                for g in per_region if g in geom and per_region_n[g] >= WEAK_MIN_N and per_region[g] < WEAK_AUC]
         if spec.get("experimental"):  # the weaknesses travel with the model, so no consumer can drop them
             oh = (ohio_case or {}).get("by_model", {}).get(chosen)
             rep["artifact"]["caveat"] = (

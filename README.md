@@ -126,7 +126,7 @@ Spot check against FEMA: the Houston bayou site went from 43% to 73% (it is in a
 sites that sit near a sizeable stream are often canyon-bottom flood zones; this site resembles them. Held-out accuracy in that probability band is about 85%,
 so roughly one in seven such predictions is wrong, which is exactly what the track-record table below says.
 
-Weakest regions for flood: Toledo (0.59), New Orleans (0.61, pumped and leveed), Miami (0.68).
+Weakest regions for flood (the served model, held out): New Orleans (0.54), Toledo (0.58), Miami (0.68). The API, memo and demo warn automatically for sites in these regions.
 
 **Wildfire** (292 points, 149 inside a perimeter; western US only; 13 features incl. topography)
 
@@ -142,7 +142,7 @@ Weakest regions for flood: Toledo (0.59), New Orleans (0.61, pumped and leveed),
 
 Topography from the same elevation window (elevation, ridge/valley position, roughness, and whether the slope faces south) made the fire
 probabilities better behaved rather than ranking much better: raw calibration error fell from 0.124 to 0.065 and Brier from 0.200 to 0.190,
-with AUC about the same (0.78). Weakest regions: central Arizona (0.57) and the Oregon Cascades (0.69). Known miss: a site inside the 2018 Camp Fire
+with AUC about the same (0.78). Weakest regions (also warned automatically at serving time): central Arizona (0.58), the Oregon Cascades (0.66), the Colorado Front Range (0.67). Known miss: a site inside the 2018 Camp Fire
 perimeter (Paradise, CA) scores only 36%; the label is "has burned before", so this is a screening signal, not a forecast.
 
 **Which model serves.** The product is a probability, so among candidates whose AUC is within 0.01 of the best (a ranking tie), the served model is the one
@@ -277,7 +277,7 @@ So there is no "unusual site" warning; the evidence table above is the uncertain
 - **River height, topography and grid proximity** features (`hydrology.py`, `grid.py`) read in parallel with imagery; a failure of any one only costs its own features.
 - **Result cache** (bounded, expiring, single-flight) and a per-provider time budget with failover.
 - **Docker image** verified in CI: it must import the real imagery stack (it once shipped without `libexpat`, so live imagery returned a 500 while offline tests passed).
-- 217 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
+- 220 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
 
 ![GeoRisk demo: calibrated probabilities with the factors that drive them](docs/demo-drivers.png)
 
@@ -357,10 +357,10 @@ Ubuntu build, MIT) is bundled and preloaded on Linux. Set `GEORISK_API_KEY` in t
 - **Probabilities are modest-skill screening, not loss estimates or a regulated floodplain determination.** Flood AUC about 0.87 and fire about 0.78 on held-out
   places, each with a track-record table above. Confirm with an official determination or inspection before relying on one.
 - The 0-100 **heuristic scores are descriptive only** (validated as near chance, shown collapsed and labelled unvalidated).
-- **Flood** is weakest in Toledo, New Orleans (pumped, leveed) and Miami, and can flag steep creek-side hillsides (a Santa Rosa hillside scores 88%; FEMA says outside a flood zone).
+- **Flood** is weakest in Toledo (Ohio), New Orleans (pumped, leveed) and Miami; sites there carry an automatic caution, and can flag steep creek-side hillsides (a Santa Rosa hillside scores 88%; FEMA says outside a flood zone).
   FEMA maps lag the ground and exclude unmapped areas, so labels are noisy.
 - **Wildfire** labels mean "has burned before" (a perimeter of 100+ acres, 2005-2018), a proxy for exposure and not a forecast. Western US only (probability withheld elsewhere);
-  weakest in central Arizona and the Oregon Cascades; a site inside the 2018 Camp Fire perimeter scores only 36%.
+  weakest in central Arizona, the Oregon Cascades and the Colorado Front Range; a site inside the 2018 Camp Fire perimeter scores only 36%.
 - **Solar siting is experimental**: AUC 0.68 across states, close to chance in flat farmland such as Ohio. It compares terrain and grid distance only; irradiance, land price, parcels, substation capacity and permitting are not assessed.
 - 10-30 m pixels: cannot resolve buildings, defensible space or individual parcels. The Copernicus DEM is a *surface* model (a 3x3 median removes spikes, but dense high-rise areas read rough).
 - One scene, not a time series: seasonal effects (dormancy, snow, irrigation) and change over time are not modelled.
@@ -370,7 +370,6 @@ Ubuntu build, MIT) is bundled and preloaded on Linux. Set `GEORISK_API_KEY` in t
 ## Roadmap (not implemented)
 
 - Land use and parcel context for flat farmland, where terrain and grid distance cannot separate solar sites from neighbouring fields (the experimental lens's main gap); substation capacity when a stable open source is available.
-- Per-state caveats and reliability in the artifact, so the weakest regions are flagged automatically at serving time.
 - Time series: change detection and seasonality instead of one scene.
 - Fine-tune a foundation model (Prithvi/Clay) end to end, or try finer-resolution input; the frozen-embedding route tested above did not help.
 - Larger label sets (more regions, MTBS burn severity) and isotonic recalibration once n > 1000.

@@ -226,3 +226,31 @@ def test_the_experimental_caveat_travels_with_the_probability():
     out = calibrated_probabilities(extract_features(make_scene("floodplain")), T, {"flood": spec})
     assert out["flood"]["caveat"] == "Experimental: rough screen."
     assert calibrated_probabilities(extract_features(make_scene("floodplain")), T, fake_artifact())["flood"]["caveat"] is None
+
+
+WEAK = {"weak_regions": [{"name": "new_orleans", "auc": 0.54, "n": 93, "shape": "circle", "geometry": [29.95, -90.07, 25]},
+                         {"name": "az_central", "auc": 0.58, "n": 41, "shape": "box", "geometry": [33.5, 35.0, -112.5, -110.5]}]}
+
+
+def test_region_caution_fires_inside_a_weak_circle_or_box_and_nowhere_else():
+    from georisk.calibration import region_caution
+
+    assert "New Orleans" in region_caution(WEAK, 29.95, -90.07) and "0.54" in region_caution(WEAK, 30.0, -90.0)
+    assert "central Arizona" in region_caution(WEAK, 34.0, -111.5)
+    assert region_caution(WEAK, 30.5, -90.07) is None  # ~60 km north: outside the 25 km circle
+    assert region_caution(WEAK, 36.0, -111.5) is None  # outside the box
+    assert region_caution(WEAK, None, None) is None and region_caution({}, 29.95, -90.07) is None
+
+
+def test_the_caution_reaches_the_output_and_the_memo_with_numbers_that_pass_the_guardrail():
+    from georisk import analyst
+
+    spec = fake_artifact()["flood"] | WEAK
+    f = extract_features(make_scene("floodplain"))
+    out = calibrated_probabilities(f, T, {"flood": spec}, lat=29.95, lon=-90.07)
+    assert "extra caution" in out["flood"]["region_caution"]
+    assert calibrated_probabilities(f, T, {"flood": spec}, lat=39.0, lon=-83.0)["flood"]["region_caution"] is None
+    facts = analyst.build_facts(out, overall=30.0, overall_level="low", confidence="high", acquired=None, cloud_cover=None, warnings=[], source="x")
+    text = analyst.template_memo(facts)
+    assert "Caution for flood: This model tested weakly near New Orleans (held-out AUC 0.54 on 93 sites)" in text
+    assert analyst.verify_numbers(text, facts)
