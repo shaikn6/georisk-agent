@@ -35,7 +35,11 @@ class SceneCache:
         """Cache file for ``key``; a key that could leave the cache directory is rejected."""
         if not _KEY.fullmatch(key):
             raise ValueError(f"invalid cache key: {key!r}")
-        return self.dir / f"{key}{suffix}"
+        base = os.path.abspath(self.dir)
+        full = os.path.normpath(os.path.join(base, f"{key}{suffix}"))
+        if not full.startswith(base + os.sep):
+            raise ValueError(f"invalid cache key: {key!r}")
+        return Path(full)
 
     def get(self, key: str, *, allow_stale: bool = False) -> Scene | None:
         path = self._path(key)
