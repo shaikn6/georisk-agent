@@ -10,12 +10,14 @@ from pathlib import Path
 import numpy as np
 
 REPO = "ibm-nasa-geospatial/Prithvi-EO-1.0-100M"
+# Pinned so the weights and the model code fetched from the hub cannot change underneath us.
+REVISION = "f3a9ea7a1723621b0aeceb4de993093704d712c5"
 
 
 def _files() -> tuple[Path, Path, Path]:
     from huggingface_hub import hf_hub_download
 
-    return tuple(Path(hf_hub_download(REPO, f)) for f in ("config.json", "Prithvi_EO_V1_100M.pt", "prithvi_mae.py"))  # type: ignore[return-value]
+    return tuple(Path(hf_hub_download(REPO, f, revision=REVISION)) for f in ("config.json", "Prithvi_EO_V1_100M.pt", "prithvi_mae.py"))  # type: ignore[return-value]
 
 
 class PrithviEmbedder:
