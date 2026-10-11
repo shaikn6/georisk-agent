@@ -117,6 +117,15 @@ def test_cache_roundtrip_preserves_bands(tmp_path):
     assert np.allclose(got.bands["nir"], s.bands["nir"]) and got.source == s.source
 
 
+@pytest.mark.parametrize("key", ["../escape", "a/b", "..", "", "k.npz", "x" * 65])
+def test_cache_rejects_keys_that_could_leave_its_directory(tmp_path, key):
+    cache = SceneCache(tmp_path / "cache")
+    with pytest.raises(ValueError, match="invalid cache key"):
+        cache.get(key)
+    cache.put(key, make_scene("dense_urban"))  # best-effort: logs and writes nothing
+    assert [p.name for p in tmp_path.rglob("*.npz")] == []
+
+
 def test_empty_provider_list_rejected():
     with pytest.raises(ValueError):
         ProviderChain([])
