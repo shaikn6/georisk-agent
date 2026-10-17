@@ -277,7 +277,7 @@ So there is no "unusual site" warning; the evidence table above is the uncertain
 - **River height, topography and grid proximity** features (`hydrology.py`, `grid.py`) read in parallel with imagery; a failure of any one only costs its own features.
 - **Result cache** (bounded, expiring, single-flight) and a per-provider time budget with failover.
 - **Docker image** verified in CI: it must import the real imagery stack (it once shipped without `libexpat`, so live imagery returned a 500 while offline tests passed).
-- 220 offline tests, 83% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
+- 226 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
 
 ![GeoRisk demo: calibrated probabilities with the factors that drive them](docs/demo-drivers.png)
 
@@ -394,7 +394,7 @@ src/georisk/
   foundation/       Prithvi experiment (research; needs the `deep` extra)
   web/index.html    single-file demo (map, drivers, area, search, export)
   data/calibration.json   the served models
-tests/              220 offline tests
+tests/              226 offline tests
 scripts/loadtest.py load test
 validation_data/    labelled points, collected features, reports (reproducible)
 ```
