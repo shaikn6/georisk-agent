@@ -221,7 +221,8 @@ only 11% of those sites were really in a flood zone; when it said 65%, 81% were 
 
 - **Fix:** a two-parameter correction (Platt scaling) fitted on held-out predictions, evaluated by correcting each region using only the
   *other* regions. Flood (current model): calibration error 0.091 -> **0.035** and Brier 0.1580 -> 0.1517, so it ships.
-  Fire: error 0.124 -> 0.087 but Brier 0.2002 -> 0.2027 (slightly worse), so it does **not** ship; a correction must improve both.
+  Fire (current model): error 0.065 -> 0.116 and Brier 0.1903 -> 0.2040 (both worse), so it does **not** ship; a correction must improve both.
+  `tests/test_calibration_regression.py` retrains both on the committed data in CI and fails if flood's corrected error exceeds 0.05 or fire's gate decision flips.
 - **Track record shown with every probability.** For each prediction the API (`evidence`) and the demo show what happened to similar held-out
   sites, with a 95% Wilson interval, e.g. "22% of 120 sites scored 20-30% were actually in a flood zone (16-31%)".
 
@@ -277,7 +278,7 @@ So there is no "unusual site" warning; the evidence table above is the uncertain
 - **River height, topography and grid proximity** features (`hydrology.py`, `grid.py`) read in parallel with imagery; a failure of any one only costs its own features.
 - **Result cache** (bounded, expiring, single-flight) and a per-provider time budget with failover.
 - **Docker image** verified in CI: it must import the real imagery stack (it once shipped without `libexpat`, so live imagery returned a 500 while offline tests passed).
-- 226 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
+- 231 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, a held-out calibration-error regression guard, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
 
 ![GeoRisk demo: calibrated probabilities with the factors that drive them](docs/demo-drivers.png)
 
@@ -394,7 +395,7 @@ src/georisk/
   foundation/       Prithvi experiment (research; needs the `deep` extra)
   web/index.html    single-file demo (map, drivers, area, search, export)
   data/calibration.json   the served models
-tests/              226 offline tests
+tests/              231 offline tests
 scripts/loadtest.py load test
 validation_data/    labelled points, collected features, reports (reproducible)
 ```

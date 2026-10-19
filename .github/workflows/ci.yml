@@ -19,7 +19,7 @@ jobs:
           python-version: "${{ matrix.python }}"
           cache: pip
           cache-dependency-path: pyproject.toml
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,research]"  # scikit-learn: the flood calibration regression test trains the served blend
       - run: ruff check src tests app.py
       - name: Offline tests
         run: pytest -q -m "not network" --cov=georisk --cov-report=term-missing:skip-covered --cov-fail-under=80
