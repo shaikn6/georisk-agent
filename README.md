@@ -347,7 +347,9 @@ solar lens (elevation and grid only) is still returned, with a warning saying wh
 - **Health:** `/health` (liveness, never touches external services) and `/health/deep` (probes each imagery provider and reports circuit state).
 - **Metrics:** `/metrics` in Prometheus text format: request counts and latency histograms by route template and status class, plus result-cache hits and misses. Labels are bounded; no coordinates or IPs ever appear in logs or metrics.
 - **Load test:** `python scripts/loadtest.py http://localhost:8765 --requests 400 --threads 32` drives synthetic scenes plus bad input and fails if it sees any 5xx.
-  A local run of 400 requests at 32 threads gave 0 server errors, overload shed as clean 429s, bad input as 422s, and p50 59 ms / p95 69 ms on the offline path.
+  On an Apple M2 Pro (10 cores, 16 GB), runs of 400 requests at 32 threads gave 0 server errors, overload shed as clean 429s and bad input as 422s.
+  Only the 8 requests admitted by the in-flight cap succeed, and they wait behind the rejected burst, so their p50 ranged from 151 ms to 1.4 s across four runs;
+  a single offline request on its own takes about 3 ms.
 - **Latency:** a new place takes about 2-6 s (imagery and the 6 km DEM window are fetched in parallel); repeating it is served from cache in about 2 ms.
 
 ## Deploying (Vercel)
