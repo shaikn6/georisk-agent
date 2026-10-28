@@ -57,7 +57,7 @@ atomic, and liveness (`/health`) never touches an external service.
 
 ```bash
 docker build -t georisk-agent . && docker run -p 8000:8000 georisk-agent   # or:
-pip install -e ".[dev]"
+pip install -e ".[dev,research]"   # what CI installs; ".[dev]" alone skips the 2 scikit-learn tests
 
 # live imagery (no API key needed)
 georisk --lat 39.9612 --lon -82.9988 --radius 800 --no-llm
@@ -162,8 +162,8 @@ How to read this honestly:
   beat tree ensembles, and it would break the serverless size limit.
 - A model ships only if leave-region-out AUC >= 0.6, its CI lower bound > 0.5 and Brier beats the base rate.
 - **Skill is modest, not deployment-grade for insurance or lending decisions.** Weak regions: flood in
-  New Orleans (AUC 0.54, pumped/leveed terrain) and Miami (0.62); fire in
-  central Arizona (0.57) and the Oregon Cascades (0.67).
+  New Orleans (AUC 0.54, pumped/leveed terrain), Toledo (0.58) and Miami (0.68); fire in
+  central Arizona (0.58), the Oregon Cascades (0.66) and the Colorado Front Range (0.67).
 - Labels have known noise: FEMA maps lag the ground, fire perimeters are coarse, and the fire label
   asks "has burned before", which is a proxy for exposure, not a forecast.
 - Fire probabilities are **withheld outside the western US** (the training domain) instead of
@@ -175,39 +175,41 @@ I tested IBM/NASA's **Prithvi-EO-1.0-100M** (a 100-million-parameter model pre-t
 the lightweight models above, under the same leave-region-out rules. For each labelled site I fetched a 6-band, 224 x 224
 Sentinel-2 chip (30 m pixels, about 6.7 km square), ran Prithvi's encoder, and used the 768-number embedding (PCA-reduced inside each
 training fold, so nothing leaks from the held-out region) on its own and combined with the tabular features. Code: `src/georisk/foundation/`.
+The tables use the current feature set (14 flood, 13 fire features) and fixed seeds: `python -m georisk.foundation.evaluate` on the committed
+embeddings reproduces `validation_data/foundation_report.json` exactly.
 
 **Flood** (863 sites)
 
 | Model | AUC | 95% CI | Brier |
 |---|---|---|---|
-| features: blend (logistic + forest) | 0.848 | 0.82–0.88 | 0.169 |
-| features: logistic | 0.834 | 0.81–0.87 | 0.166 |
-| features: forest | 0.833 | 0.81–0.86 | 0.189 |
-| average: feature blend + prithvi logistic | 0.808 | 0.78–0.84 | 0.189 |
-| features + prithvi PCA16: forest | 0.801 | 0.77–0.83 | 0.206 |
-| features + prithvi PCA16: logistic | 0.798 | 0.77–0.83 | 0.183 |
+| features: blend (logistic + forest) | 0.872 | 0.85–0.90 | 0.155 |
+| features: forest | 0.857 | 0.83–0.88 | 0.181 |
+| features + prithvi PCA16: forest | 0.854 | 0.83–0.88 | 0.191 |
+| features: logistic | 0.853 | 0.83–0.88 | 0.157 |
+| features + prithvi PCA16: logistic | 0.844 | 0.82–0.87 | 0.160 |
+| average: feature blend + prithvi logistic | 0.838 | 0.81–0.86 | 0.178 |
 | prithvi only: forest on PCA32 | 0.668 | 0.64–0.70 | 0.235 |
 | prithvi only: logistic on PCA32 | 0.661 | 0.62–0.70 | 0.237 |
 
-Ohio holdout (trained on other states): feature blend 0.833, Prithvi alone 0.624, features + Prithvi 0.785.
+Ohio holdout (trained on other states): feature blend 0.873, Prithvi alone 0.624, features + Prithvi 0.827.
 
 **Wildfire** (286 sites)
 
 | Model | AUC | 95% CI | Brier |
 |---|---|---|---|
-| average: feature blend + prithvi logistic | 0.780 | 0.72–0.83 | 0.190 |
-| features + prithvi PCA16: forest | 0.778 | 0.71–0.83 | 0.205 |
-| features + prithvi PCA16: logistic | 0.774 | 0.71–0.82 | 0.191 |
-| features: forest | 0.771 | 0.70–0.83 | 0.204 |
-| features: blend (logistic + forest) | 0.764 | 0.69–0.82 | 0.197 |
-| features: logistic | 0.733 | 0.66–0.79 | 0.205 |
+| features + prithvi PCA16: forest | 0.789 | 0.73–0.84 | 0.202 |
+| average: feature blend + prithvi logistic | 0.781 | 0.73–0.83 | 0.189 |
+| features: forest | 0.775 | 0.71–0.83 | 0.203 |
+| features: blend (logistic + forest) | 0.771 | 0.70–0.82 | 0.194 |
+| features + prithvi PCA16: logistic | 0.769 | 0.71–0.82 | 0.194 |
+| features: logistic | 0.750 | 0.69–0.81 | 0.203 |
 | prithvi only: logistic on PCA32 | 0.714 | 0.65–0.77 | 0.220 |
 | prithvi only: forest on PCA32 | 0.714 | 0.65–0.77 | 0.226 |
 
 **Result: the big model does not earn its cost here.**
-- For flood, Prithvi alone is far worse (0.66 vs 0.85), and adding it to the tabular features *lowers* accuracy. Flood-zone status depends on fine
+- For flood, Prithvi alone is far worse (0.66 vs 0.87), and adding it to the tabular features *lowers* accuracy. Flood-zone status depends on fine
   terrain and water detail that a 30 m, 6.7 km chip blurs away.
-- For wildfire, the best combination is marginally higher (0.780 vs 0.764), but the confidence intervals overlap almost completely, so it is a tie.
+- For wildfire, the best combination is marginally higher (0.789 vs 0.771), but the confidence intervals overlap almost completely, so it is a tie.
 - Cost: 443 MB of weights, PyTorch, and about 1 s per chip on a laptop GPU, versus milliseconds and numpy only for the served models. It also cannot run on the free serverless deployment.
 - Caveats: one encoder, one image date per chip, mean-pooled embeddings and no fine-tuning. A fine-tuned model or finer-resolution input might do better; this measures the cheap "frozen embedding" route.
 
@@ -245,10 +247,12 @@ Wildfire (not recalibrated, so this table is the honest reading of the raw score
 
 | Predicted band | Sites | Actually positive | 95% range |
 |---|---|---|---|
-| 0–40% | 87 | 15% | 9–24% |
-| 40–50% | 50 | 48% | 35–62% |
-| 50–60% | 67 | 66% | 54–76% |
-| 60–100% | 88 | 77% | 68–85% |
+| 0–30% | 47 | 6% | 2–17% |
+| 30–50% | 61 | 30% | 20–42% |
+| 50–60% | 46 | 63% | 49–76% |
+| 60–70% | 44 | 66% | 51–78% |
+| 70–80% | 54 | 72% | 59–82% |
+| 80–100% | 40 | 78% | 63–88% |
 
 A check that did *not* pan out, and so was not built: I tested whether "this site looks unlike the training data" predicts worse accuracy.
 It does not; unusual sites (extreme terrain, obvious rivers) were predicted *better*, and the hard cases are ordinary mid-range sites.
@@ -319,7 +323,7 @@ Track record of the shown probability on held-out states:
 - Nationally the skill is modest. In flat farmland states it is close to chance: Ohio held-out AUC 0.63 on only 26 sites, and a spot check of 10 real Ohio plants (not used in training)
   found the plant scored higher than ordinary land 6 km away in 5 of 10 pairs (average 53% vs 50%).
 - Why: in flat farmland a solar field and its neighbours look the same to terrain and grid distance. What decides siting there is parcel size, land use, substation capacity, zoning and economics, none of which are in this free pipeline.
-- Weakest states in testing: MS (0.22), LA (0.33), MO (0.50), ID (0.56).
+- Weakest states in testing (held out, from `validation_data/report.json`): MO (0.45, 16 sites), MI (0.57, 18 sites), IL (0.60, 100 sites).
 - The caveat is stored in the model artifact, so the API, the memo and the demo always show it next to the number ("experimental").
 
 ### When imagery is unavailable
