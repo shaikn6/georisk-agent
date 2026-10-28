@@ -5,30 +5,30 @@
     "missing_chips": 13,
     "leave_region_out": {
       "features: logistic": {
-        "auc": 0.834,
+        "auc": 0.853,
         "auc_ci95": [
-          0.807,
-          0.866
+          0.829,
+          0.879
         ],
-        "brier": 0.166,
+        "brier": 0.1568,
         "brier_baseline": 0.2497
       },
       "features: forest": {
-        "auc": 0.833,
+        "auc": 0.857,
         "auc_ci95": [
-          0.805,
-          0.86
+          0.832,
+          0.884
         ],
-        "brier": 0.1891,
+        "brier": 0.1809,
         "brier_baseline": 0.2497
       },
       "features: blend (logistic + forest)": {
-        "auc": 0.848,
+        "auc": 0.872,
         "auc_ci95": [
-          0.823,
-          0.877
+          0.851,
+          0.897
         ],
-        "brier": 0.1693,
+        "brier": 0.155,
         "brier_baseline": 0.2497
       },
       "prithvi only: logistic on PCA32": {
@@ -50,30 +50,30 @@
         "brier_baseline": 0.2497
       },
       "features + prithvi PCA16: logistic": {
-        "auc": 0.798,
+        "auc": 0.844,
         "auc_ci95": [
-          0.767,
-          0.832
+          0.819,
+          0.87
         ],
-        "brier": 0.1827,
+        "brier": 0.1601,
         "brier_baseline": 0.2497
       },
       "features + prithvi PCA16: forest": {
-        "auc": 0.801,
+        "auc": 0.854,
         "auc_ci95": [
-          0.77,
-          0.833
+          0.828,
+          0.878
         ],
-        "brier": 0.206,
+        "brier": 0.1912,
         "brier_baseline": 0.2497
       },
       "average: feature blend + prithvi logistic": {
-        "auc": 0.808,
+        "auc": 0.838,
         "auc_ci95": [
-          0.78,
-          0.837
+          0.812,
+          0.865
         ],
-        "brier": 0.1888
+        "brier": 0.1782
       }
     },
     "best": "features: blend (logistic + forest)",
@@ -81,12 +81,12 @@
       "n_ohio": 280,
       "by_model": {
         "features: blend (logistic + forest)": {
-          "auc": 0.833,
+          "auc": 0.873,
           "auc_ci95": [
-            0.784,
-            0.88
+            0.832,
+            0.911
           ],
-          "brier": 0.1855
+          "brier": 0.1747
         },
         "prithvi only: logistic on PCA32": {
           "auc": 0.624,
@@ -97,12 +97,12 @@
           "brier": 0.227
         },
         "features + prithvi PCA16: forest": {
-          "auc": 0.785,
+          "auc": 0.827,
           "auc_ci95": [
-            0.733,
-            0.838
+            0.78,
+            0.871
           ],
-          "brier": 0.208
+          "brier": 0.2043
         }
       }
     }
@@ -113,30 +113,30 @@
     "missing_chips": 6,
     "leave_region_out": {
       "features: logistic": {
-        "auc": 0.733,
+        "auc": 0.75,
         "auc_ci95": [
-          0.664,
-          0.79
+          0.686,
+          0.807
         ],
-        "brier": 0.2052,
+        "brier": 0.2028,
         "brier_baseline": 0.2498
       },
       "features: forest": {
-        "auc": 0.771,
+        "auc": 0.775,
         "auc_ci95": [
-          0.702,
-          0.829
+          0.708,
+          0.833
         ],
-        "brier": 0.2037,
+        "brier": 0.2033,
         "brier_baseline": 0.2498
       },
       "features: blend (logistic + forest)": {
-        "auc": 0.764,
+        "auc": 0.771,
         "auc_ci95": [
-          0.693,
-          0.822
+          0.705,
+          0.824
         ],
-        "brier": 0.1967,
+        "brier": 0.1938,
         "brier_baseline": 0.2498
       },
       "prithvi only: logistic on PCA32": {
@@ -158,32 +158,32 @@
         "brier_baseline": 0.2498
       },
       "features + prithvi PCA16: logistic": {
-        "auc": 0.774,
+        "auc": 0.769,
         "auc_ci95": [
-          0.709,
-          0.821
+          0.706,
+          0.82
         ],
-        "brier": 0.1911,
+        "brier": 0.1937,
         "brier_baseline": 0.2498
       },
       "features + prithvi PCA16: forest": {
-        "auc": 0.778,
+        "auc": 0.789,
         "auc_ci95": [
-          0.715,
-          0.829
+          0.733,
+          0.838
         ],
-        "brier": 0.2048,
+        "brier": 0.2024,
         "brier_baseline": 0.2498
       },
       "average: feature blend + prithvi logistic": {
-        "auc": 0.78,
+        "auc": 0.781,
         "auc_ci95": [
-          0.724,
-          0.827
+          0.726,
+          0.828
         ],
-        "brier": 0.1903
+        "brier": 0.1892
       }
     },
-    "best": "average: feature blend + prithvi logistic"
+    "best": "features + prithvi PCA16: forest"
   }
 ]
