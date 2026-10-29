@@ -1,5 +1,10 @@
 # georisk-agent
 
+[![CI](https://github.com/shaikn6/georisk-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/shaikn6/georisk-agent/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![Live demo](https://img.shields.io/badge/Live%20demo-Vercel-FF9E0F)](https://georisk-agent.vercel.app)
+
 **Live demo: https://georisk-agent.vercel.app** (click the map; real Sentinel-2 imagery, ~3 s per site)
 
 Satellite-derived **physical-risk screening** for a US site or outline: pulls a recent Sentinel-2 scene, the Copernicus elevation model and
@@ -28,6 +33,13 @@ flowchart TD
     C[(result cache<br/>single-flight)] -.-> O
 ```
 
+## Why this exists
+
+Flood and wildfire scores for a site usually come from a vendor model that cannot be audited. This repository shows a
+small GeoAI pipeline where every probability is calibrated and checked on held-out places against public records (FEMA,
+USGS), every degraded input is reported in the output instead of hidden, and the written memo is built only from the
+computed numbers.
+
 ## Design: independent parts that fail alone
 
 Every external dependency and every hazard sits behind its own boundary, so a failure degrades the
@@ -53,7 +65,7 @@ Other guarantees: GDAL is isolated from the host (public buckets are read unsign
 credentials cannot break a read; every read has timeouts and bounded retries), cache writes are
 atomic, and liveness (`/health`) never touches an external service.
 
-## Quick start
+## Quickstart
 
 ```bash
 docker build -t georisk-agent . && docker run -p 8000:8000 georisk-agent   # or:

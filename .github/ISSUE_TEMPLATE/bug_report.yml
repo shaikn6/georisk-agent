@@ -1,0 +1,40 @@
+name: Bug report
+description: Something isn't working as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you run, and what did georisk-agent return?
+      placeholder: |
+        georisk --lat 39.96 --lon -83.0 --no-llm returned ..., expected ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Command or request (coordinates, radius, flags), or a failing test.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Commit SHA or release tag, and whether you ran the CLI, the API or Docker.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: The `warnings`, `provenance` and `meta` fields help most.
+      render: json
