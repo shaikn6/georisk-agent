@@ -1,5 +1,7 @@
 # georisk-agent
 
+> **Flood and wildfire risk for a US location from satellite and elevation data, calibrated against FEMA and USGS.**
+
 [![CI](https://github.com/shaikn6/georisk-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/shaikn6/georisk-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
