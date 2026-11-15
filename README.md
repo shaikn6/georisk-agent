@@ -16,6 +16,32 @@ the high-voltage grid map; returns **calibrated flood and wildfire probabilities
 It is a compact, honest GeoAI system: every number is validated on held-out places against public records (FEMA, USGS), weaknesses are
 written next to the result, and each part fails alone.
 
+## Results (reproducible on CPU, no API key)
+
+Leave-region-out skill against public ground truth: a model is trained on every region except one and scored on the held-out region, so it is
+judged on places it has never seen. AUC 0.5 is a coin flip; the Brier baseline is 0.25.
+
+| Hazard | Held-out AUC | 95% CI | Brier | Calibration error (ECE) | Labels |
+|---|---|---|---|---|---|
+| Flood | 0.866 | 0.84–0.89 | 0.158 | 0.091 → 0.035 (Platt, shipped) | FEMA NFHL, 876 sites |
+| Wildfire | 0.777 | 0.72–0.83 | 0.190 | 0.065 (raw; recalibration rejected) | USGS/NIFC WFIGS, 292 sites |
+| Solar siting (experimental) | 0.682 | 0.67–0.70 | 0.226 | 0.037 → 0.022 (Platt, shipped) | USGS/Berkeley Lab LSSPVDB, 3,000 sites |
+
+The AUC, CI and Brier columns are the held-out scores before recalibration; the ECE column is the calibration error before and after Platt
+scaling, which ships only when it improves **both** ECE and Brier (so flood and solar ship a correction and wildfire keeps its raw probability).
+Reproduce every number from the committed labelled features — CPU only, a few minutes, no network and no API key (the `research` extra trains the
+flood forest with scikit-learn, then it is exported to plain numpy JSON):
+
+```bash
+pip install -e ".[dev,research]"
+python -m georisk.validation.calibrate --report /tmp/report.json --artifact /tmp/artifact.json
+```
+
+The run writes `report.json` and the served model artifact; every figure above matches the committed `validation_data/report.json`. The
+collection step that built those feature files (`python -m georisk.validation.run`) needs network access to the imagery and elevation services
+and has already been run; the calibration step above is fully offline. Full per-model tables, the Ohio case study, the foundation-model
+experiment and the calibration track record are below.
+
 ```mermaid
 flowchart TD
     A[lat/lon or GeoJSON outline] --> B[AOI + tiles]
@@ -227,7 +253,7 @@ Ohio holdout (trained on other states): feature blend 0.873, Prithvi alone 0.624
 - Cost: 443 MB of weights, PyTorch, and about 1 s per chip on a laptop GPU, versus milliseconds and numpy only for the served models. It also cannot run on the free serverless deployment.
 - Caveats: one encoder, one image date per chip, mean-pooled embeddings and no fine-tuning. A fine-tuned model or finer-resolution input might do better; this measures the cheap "frozen embedding" route.
 
-So the served models stay the small ones. This is the same answer DeepSeek/Qwen-style work keeps pointing to: a small, well-matched model beats a big general one when the task is narrow and the data is clean.
+So the served models stay the small ones: on a narrow task with a few hundred clean tabular rows, a well-matched lightweight model beats a frozen general-purpose encoder.
 
 ## Can you trust the probabilities? (calibration audit)
 
@@ -296,7 +322,7 @@ So there is no "unusual site" warning; the evidence table above is the uncertain
 - **River height, topography and grid proximity** features (`hydrology.py`, `grid.py`) read in parallel with imagery; a failure of any one only costs its own features.
 - **Result cache** (bounded, expiring, single-flight) and a per-provider time budget with failover.
 - **Docker image** verified in CI: it must import the real imagery stack (it once shipped without `libexpat`, so live imagery returned a 500 while offline tests passed).
-- 231 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, a held-out calibration-error regression guard, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
+- 244 offline tests, 84% coverage enforced at 80% in CI (fault injection, API security, rate limiting, metrics, calibration, a held-out calibration-error regression guard, the feature-extraction and scoring arithmetic, hydrology, the real imagery path with fake catalogs and a real GeoTIFF, the model-training tools including a "noise must not ship" gate test) + live smoke tests.
 
 ![GeoRisk demo: calibrated probabilities with the factors that drive them](docs/demo-drivers.png)
 
@@ -415,7 +441,7 @@ src/georisk/
   foundation/       Prithvi experiment (research; needs the `deep` extra)
   web/index.html    single-file demo (map, drivers, area, search, export)
   data/calibration.json   the served models
-tests/              231 offline tests
+tests/              244 offline tests
 scripts/loadtest.py load test
 validation_data/    labelled points, collected features, reports (reproducible)
 ```

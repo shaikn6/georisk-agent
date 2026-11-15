@@ -2,6 +2,15 @@
 
 All notable changes. Numbers are leave-region-out (held-out places), never in-sample.
 
+## Unreleased
+
+- Docs: a metrics-first **Results** table on the first screen (flood AUC 0.866, fire 0.777, solar 0.682) with
+  the one-line offline reproduce command (`python -m georisk.validation.calibrate`), which regenerates every
+  figure from the committed labelled features on CPU with no network or API key.
+- Tests: arithmetic unit tests that pin the feature extraction, the flood and wildfire scoring coefficients and
+  thresholds, the calibrated-probability median fill and track-record lookup, the leave-region-out skip, and the
+  shipped artifact's schema (244 offline tests).
+
 ## 0.4.0 — 2026-10-01
 
 ### Accuracy and honesty
