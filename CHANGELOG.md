@@ -10,6 +10,8 @@ All notable changes. Numbers are leave-region-out (held-out places), never in-sa
 - Tests: arithmetic unit tests that pin the feature extraction, the flood and wildfire scoring coefficients and
   thresholds, the calibrated-probability median fill and track-record lookup, the leave-region-out skip, and the
   shipped artifact's schema (244 offline tests).
+- Docs: `validation_data/benchmark.json` regenerated from the current feature set (it predated the river-height
+  features); the README range is now 0.82–0.86 flood AUC, and the track-record example quotes the real 20–30% row.
 
 ## 0.4.0 — 2026-10-01
 
